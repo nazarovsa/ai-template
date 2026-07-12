@@ -20,4 +20,4 @@ BUILD_PROMPT.md
 #   .serena/project.yml, .serena/memories/**, ai-flow/**, CLAUDE.md, AGENTS.md
 #
 # Users who do NOT want to commit the flow at all should exclude it via a
-# GLOBAL gitignore instead — see ai-flow/README.md ("Not committing the flow").
+# GLOBAL gitignore instead — see README.md ("Не коммитить флоу").

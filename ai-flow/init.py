@@ -36,13 +36,13 @@ HOOK_COMMAND = "python ai-flow/hooks/check_memory_sync.py"
 
 # Template files copied on `init` (relative to the repo root).
 MANIFEST = [
+    "README.md",
     "CLAUDE.md",
     "AGENTS.md",
     ".gitignore",
     "ai-flow/run_tasks.py",
     "ai-flow/init.py",
     "ai-flow/agents.yml",
-    "ai-flow/README.md",
     "ai-flow/docs/prompts/PROMT_SPEC.md",
     "ai-flow/docs/prompts/PROMT_TASKS.md",
     "ai-flow/docs/prompts/PROMT_AGENT.md",
