@@ -1,0 +1,23 @@
+# --- Serena / Claude Code caches (never commit) ---
+.serena/cache/
+.claude/cache/
+.claude/tsc-cache/
+
+# --- Python ---
+__pycache__/
+*.pyc
+ai-flow/**/__pycache__/
+
+# --- Local env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Bootstrap prompt (temporary; remove after the repo is built) ---
+BUILD_PROMPT.md
+
+# Tracked on purpose (do NOT ignore):
+#   .serena/project.yml, .serena/memories/**, ai-flow/**, CLAUDE.md, AGENTS.md
+#
+# Users who do NOT want to commit the flow at all should exclude it via a
+# GLOBAL gitignore instead — see ai-flow/README.md ("Not committing the flow").

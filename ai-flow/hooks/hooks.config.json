@@ -1,0 +1,9 @@
+{
+  "memory_sync": {
+    "enabled": true,
+    "mode": "warn",
+    "check_dangling": true,
+    "check_orphans": true,
+    "ignore_memories": ["suggested-commands", "task-completion"]
+  }
+}

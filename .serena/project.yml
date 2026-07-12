@@ -1,0 +1,39 @@
+# Serena project configuration.
+# Docs: https://github.com/oraios/serena
+
+# Name by which the project is referenced within Serena.
+project_name: "ai-template"
+
+# Languages for which language servers are started (LSP backend).
+# >>> REPLACE with your project's language(s). <<<
+# ai-flow/init.py sets this from --lang. Common values:
+#   python  typescript  csharp  go  rust  java  kotlin  php  ruby  cpp
+# For JavaScript use `typescript`; for C use `cpp`.
+languages:
+  - python
+
+# Encoding of text files in the project.
+encoding: "utf-8"
+
+# Line ending when writing source files: unset | "lf" | "crlf" | "native".
+line_ending:
+
+# Use the project's .gitignore files to ignore files.
+ignore_all_files_in_gitignore: true
+
+# Additional paths to ignore (gitignore syntax).
+ignored_paths: []
+
+# Read-only mode disables all editing tools.
+read_only: false
+
+# Tool inclusion/exclusion (see Serena docs).
+excluded_tools: []
+included_optional_tools: []
+
+# Initial prompt always given to the LLM on project activation (memories load on demand).
+initial_prompt: ""
+
+# Workspace folders indexed by Serena (relative to project root).
+ls_workspace_folders:
+  - .

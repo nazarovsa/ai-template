@@ -1,0 +1,39 @@
+# Orchestrator configuration for ai-flow/run_tasks.py
+
+default_agent: claude          # which agent to use by default
+task_timeout: 1200             # per-task timeout, seconds
+completion_marker: "<promise>COMPLETE</promise>"
+
+git:
+  enabled: true                # false → no commits; also auto-skipped if not a git repo
+  auto_commit: true
+  message_template: "feat: task #{id} - {title}"   # truncated to <=155 chars, no tool mentions
+
+context:                       # all paths are relative to REPO_ROOT (the parent of ai-flow/)
+  tasks_dir: ai-flow/docs/tasks                     # feature folders with task files + done/
+  specs_dir: ai-flow/docs/specs                     # project + per-feature specs (target + as-built)
+  memories_dir: .serena/memories                    # Serena memory in the repo root (raw .md)
+  changelog_file: ai-flow/docs/CHANGELOG.md
+  agent_prompt: ai-flow/docs/prompts/PROMT_AGENT.md
+  inline_memories: false                            # false → inject memory pointers, not full text
+
+agents:
+  # Claude Code — https://docs.claude.com/claude-code
+  claude:
+    command: "claude --model {model} --print --dangerously-skip-permissions"
+    model: sonnet
+
+  # OpenAI Codex CLI — prompt is read from stdin via the trailing "-"
+  # NOTE: verify flags against your installed `codex exec --help`
+  codex:
+    command: "codex exec -m {model} --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -"
+    model: gpt-5-codex
+
+  # zcode / Z.ai GLM — headless mode
+  # NOTE: verify flags against `zcode --help`; for the Claude-compatible proxy variant use env below
+  zcode:
+    command: "zcode -p -m {model}"
+    model: glm-4.6
+    # env:
+    #   ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic"
+    #   ANTHROPIC_AUTH_TOKEN: "${ZAI_API_KEY}"
