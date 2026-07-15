@@ -30,7 +30,7 @@ SOURCE_ROOT = FLOW_DIR.parent
 
 SUPPORTED_TOOLS = ["claude", "codex", "cursor", "gemini", "zcode"]
 RUNNABLE_AGENTS = {"claude", "codex", "zcode"}  # can be default_agent in agents.yml
-SUBAGENTS = ["task-author", "doc-keeper"]
+SUBAGENTS = ["prd-author", "task-author", "doc-keeper"]
 SERENA_REPO = "git+https://github.com/oraios/serena"
 HOOK_COMMAND = "python ai-flow/hooks/check_memory_sync.py"
 
@@ -43,6 +43,7 @@ MANIFEST = [
     "ai-flow/run_tasks.py",
     "ai-flow/init.py",
     "ai-flow/agents.yml",
+    "ai-flow/docs/prompts/PROMT_PRD.md",
     "ai-flow/docs/prompts/PROMT_SPEC.md",
     "ai-flow/docs/prompts/PROMT_TASKS.md",
     "ai-flow/docs/prompts/PROMT_AGENT.md",
@@ -52,8 +53,10 @@ MANIFEST = [
     "ai-flow/docs/CHANGELOG.md",
     "ai-flow/hooks/check_memory_sync.py",
     "ai-flow/hooks/hooks.config.json",
+    ".claude/agents/prd-author.md",
     ".claude/agents/task-author.md",
     ".claude/agents/doc-keeper.md",
+    ".claude/skills/new-prd/SKILL.md",
     ".claude/skills/new-task/SKILL.md",
     ".claude/skills/sync-docs/SKILL.md",
     ".serena/project.yml",
@@ -217,7 +220,7 @@ def generate_adapters(target: Path, tool: str) -> None:
         for name in SUBAGENTS:
             _, body = _agent_body(target, name)
             (d / f"{name}.md").write_text(body, encoding="utf-8")
-        info("wrote .codex/prompts/{task-author,doc-keeper}.md + AGENTS.md")
+        info(f"wrote .codex/prompts/*.md ({', '.join(SUBAGENTS)}) + AGENTS.md")
 
     elif tool == "cursor":
         d = target / ".cursor" / "rules"

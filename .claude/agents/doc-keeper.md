@@ -29,6 +29,8 @@ never lag behind it.
 - Keep context minimal: CLAUDE.md holds only the read_memory table; full content lives in memories/specs.
 - Do NOT create tasks (`ai-flow/docs/tasks/`) and do NOT write application code — that is the
   `task-author` agent's / executors' scope. You and `task-author` are two distinct agents.
+- The greenfield PRD (`ai-flow/docs/specs/PRD.md`) is authored by the `prd-author` agent. You may read
+  it to seed `specs/README.md`, but do not rewrite it — treat it as discovery input.
 
 ## Report
 

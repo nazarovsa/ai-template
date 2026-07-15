@@ -18,6 +18,7 @@ by `doc-keeper` / `PROMT_SERENA`.>
 ```
 ai-flow/docs/specs/
 ├── README.md                       # this file (project overview + index)
+├── PRD.md                          # greenfield Product Requirements Document (from PROMT_PRD / /new-prd)
 ├── NN-<area>.md                    # optional broad context specs (from PROMT_SPEC)
 └── <YYYYMMddHHmm_FEATURE>/         # per-feature spec, mirrors tasks/<feature>/
     ├── README.md                   #   target — what the feature should do
@@ -25,6 +26,7 @@ ai-flow/docs/specs/
 ```
 
 - `run_tasks.py` injects these as pointers; the agent reads the relevant ones.
+- The project-level PRD (from-scratch discovery) is generated via `../prompts/PROMT_PRD.md`.
 - Broad context specs are generated via `../prompts/PROMT_SPEC.md`.
 - Per-feature `README.md` (target) + `IMPLEMENTED.md` (as-built) are kept current automatically
   after tasks run (see `../prompts/PROMT_AGENT.md`).

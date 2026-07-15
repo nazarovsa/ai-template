@@ -9,7 +9,9 @@ Load Serena memories and docs **on demand** — do not preload everything into c
 
 - Flow infrastructure lives under `ai-flow/`. The repo root keeps only `CLAUDE.md`, `AGENTS.md`,
   `.claude/`, `.serena/`.
-- Planning prompts live in `ai-flow/docs/prompts/` (`PROMT_SPEC`, `PROMT_TASKS`, `PROMT_AGENT`, `PROMT_SERENA`).
+- Planning prompts live in `ai-flow/docs/prompts/` (`PROMT_PRD`, `PROMT_SPEC`, `PROMT_TASKS`, `PROMT_AGENT`, `PROMT_SERENA`).
+  A from-scratch project starts with `PROMT_PRD` (`/new-prd`) — an interview that produces the project
+  PRD at `ai-flow/docs/specs/PRD.md`, which then feeds `PROMT_SPEC`.
 - Specs & functionality live in `ai-flow/docs/specs/`: root `README.md` (project overview, filled at
   onboarding) + per-feature `<feature>/README.md` (target) + `IMPLEMENTED.md` (as-built), updated
   automatically. No separate `functionality/` folder — specs is the single home.
