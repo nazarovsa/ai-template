@@ -124,7 +124,59 @@ Every task type has mandatory content. The agent cannot guess — be explicit.
 - User interactions and their effects
 - Routing if applicable
 
-### 6. What Every Task Must Contain
+### 6. Test Cases (mandatory — written before the implementation)
+
+Every task file MUST contain a `## Test Cases` section, placed **before** `## Acceptance Criteria`.
+The cases are derived from the task text alone, before any code exists: they are the contract the
+implementation has to satisfy, not a description of what was built. A task without test cases is
+incomplete — do not emit it.
+
+**6.1. Unit tests only**
+
+Every listed case must be runnable as a plain unit test: in-process, isolated, deterministic,
+milliseconds per case. Integration/E2E scenarios with real infrastructure do NOT belong here.
+
+- **Mock every external dependency**: database and repositories, HTTP/API clients, message brokers
+  and queues, filesystem, clock/time, randomness, UUID generation, environment/config, other services.
+- Name the test double per case (e.g. `IPaymentGateway` stub returning `Declined`), and the value it
+  returns — the agent must not invent the setup.
+- Anything that needs a real database, container, network or broker is **out of scope** for this
+  section — list it under `### Not covered by unit tests` with a one-line reason, and let a separate
+  integration/E2E task own it.
+
+**6.2. Minimum coverage**
+
+At minimum, cover:
+
+- **Hot paths** — the main success scenario(s) of every public method/endpoint the task introduces
+  or changes, one case each.
+- **Corner cases** — boundaries (0, 1, max, off-by-one, empty collection, `null`/absent value),
+  invalid input and validation failures, error/exception branches, and failures of every mocked
+  dependency (timeout, error response, empty result).
+
+Exhaustive coverage of trivial glue is not required; a missing branch that changes behavior is.
+
+**6.3. Format**
+
+A table, one row per case, with concrete values — no "valid input", no "some error":
+
+```markdown
+## Test Cases
+
+**Test file**: `path/to/tests/thing_test.ext`
+**Mocks**: `IUserRepository` (in-memory stub), `IClock` (fixed at `2025-01-01T00:00:00Z`)
+
+| # | Case | Arrange (given) | Act (when) | Assert (expected) |
+|---|------|-----------------|------------|-------------------|
+| 1 | Hot path: order total with discount | Cart with items `[100, 50]`, coupon `SAVE10` valid | `CalculateTotal(cart)` | Returns `135.00`, repository queried once |
+| 2 | Corner: empty cart | Cart with no items | `CalculateTotal(cart)` | Returns `0.00`, no repository call |
+| 3 | Corner: repository throws | `IUserRepository.GetById` throws `TimeoutException` | `CalculateTotal(cart)` | Propagates `ServiceUnavailableException`, no partial write |
+
+### Not covered by unit tests
+- Real DB transaction rollback → integration task `<name>`.
+```
+
+### 7. What Every Task Must Contain
 
 ```markdown
 # [Task title]
@@ -157,6 +209,21 @@ but enough for the agent to write the implementation without ambiguity.]
 
 ---
 
+## Test Cases
+
+**Test file**: `path/to/tests/<subject>_test.ext`
+**Mocks**: [every external dependency + what the double returns]
+
+| # | Case | Arrange (given) | Act (when) | Assert (expected) |
+|---|------|-----------------|------------|-------------------|
+| 1 | [hot path] | [concrete values] | [call] | [concrete expected result] |
+| 2 | [corner case] | ... | ... | ... |
+
+### Not covered by unit tests (optional)
+- [scenario] → [which integration/E2E task owns it]
+
+---
+
 ## Acceptance Criteria
 
 1. [ ] [Specific, verifiable criterion]
@@ -170,7 +237,7 @@ but enough for the agent to write the implementation without ambiguity.]
 [Edge cases, workarounds, temporary limitations, future improvements]
 ```
 
-### 7. What to Include vs. Exclude
+### 8. What to Include vs. Exclude
 
 **ALWAYS include:**
 - Complete signatures of public interfaces and methods
@@ -179,21 +246,24 @@ but enough for the agent to write the implementation without ambiguity.]
 - File paths for creation or modification
 - Schema details (table names, column types, index names)
 - Route paths and HTTP/status codes
-- Specific test cases with expected results
+- A `## Test Cases` table per §6: unit-level, mocked dependencies, concrete inputs and
+  expected results, hot paths + corner cases
 
 **NEVER include:**
 - Full implementation bodies (signatures + logic description is enough)
 - Tutorials or explanations of frameworks
 - External links (except package/library names)
 - Vague instructions ("handle errors appropriately", "add tests")
+- Test cases that need real infrastructure (live DB, containers, network) — those are a
+  separate integration/E2E task, not the `## Test Cases` section
 
-### 8. Folders and Naming (tasks are grouped by feature)
+### 9. Folders and Naming (tasks are grouped by feature)
 
 All tasks for one improvement (a feature OR a fix) live in a single **feature folder**:
 
 ```
 ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/
-├── README.md                          # DesignReview of the whole improvement (see §8.1)
+├── README.md                          # DesignReview of the whole improvement (see §9.1)
 ├── <YYYYMMddHHmm_TASK_SUMMARY>.md      # one task per file
 ├── <YYYYMMddHHmm_ANOTHER_SUMMARY>.md
 └── done/                              # run_tasks.py MOVES completed tasks here (do not pre-create)
@@ -205,7 +275,7 @@ ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/
 - Execution order = filename order (timestamp prefix ⇒ chronological). Refine with `Depends on:`.
 - Task title inside the file = the first `#` heading (plain, no `#NN`).
 
-**8.1. Feature `README.md` (DesignReview)** — a quick-glance overview of the improvement:
+**9.1. Feature `README.md` (DesignReview)** — a quick-glance overview of the improvement:
 ```markdown
 # <Feature Name>
 
@@ -221,7 +291,7 @@ ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/
 ## Acceptance     <how we know the improvement is done>
 ```
 
-### 9. Dependencies and Conventions
+### 10. Dependencies and Conventions
 
 - `Depends on:` references other tasks **by their file name (or a substring)**, or `none`.
 - If the project has conventions, reference the relevant Serena memory inline
@@ -232,8 +302,10 @@ ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/
 **Part 1 — Dependency graph (ASCII)** of the tasks in this feature (a DAG).
 
 **Part 2 — Feature `README.md`** at `ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/README.md`
-(the DesignReview from §8.1), with the task checklist.
+(the DesignReview from §9.1), with the task checklist.
 
 **Part 3 — Task files**, one per file at
-`ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/<YYYYMMddHHmm_TASK_SUMMARY>.md`, in the format from §6
+`ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/<YYYYMMddHHmm_TASK_SUMMARY>.md`, in the format from §7
 (drop the `#NN` from the title — use a plain `# <Task title>`).
+Each task file MUST carry a filled-in `## Test Cases` section per §6 — unit-level, dependencies
+mocked, hot paths and corner cases covered. A task file without it is not a valid output.
