@@ -8,8 +8,8 @@ Load Serena memories and docs **on demand** — do not preload everything into c
 ## Workflow
 
 - Flow infrastructure lives under `ai-flow/`. The repo root keeps only `CLAUDE.md`, `AGENTS.md`,
-  `.claude/`, `.serena/`.
-- Planning prompts live in `ai-flow/docs/prompts/` (`PROMT_PRD`, `PROMT_SPEC`, `PROMT_TASKS`, `PROMT_AGENT`, `PROMT_SERENA`).
+  `.claude/`, `.serena/`, `.github/`.
+- Planning prompts live in `ai-flow/docs/prompts/` (`PROMT_PRD`, `PROMT_SPEC`, `PROMT_TASKS`, `PROMT_AGENT`, `PROMT_SERENA`, `PROMT_CI`).
   A from-scratch project starts with `PROMT_PRD` (`/new-prd`) — an interview that produces the project
   PRD at `ai-flow/docs/specs/PRD.md`, which then feeds `PROMT_SPEC`.
 - Specs & functionality live in `ai-flow/docs/specs/`: root `README.md` (project overview, filled at
@@ -20,6 +20,11 @@ Load Serena memories and docs **on demand** — do not preload everything into c
   `<YYYYMMddHHmm_TASK>.md`, and a `done/` subfolder (see `ai-flow/docs/tasks/README.md`).
 - Automated execution: `python ai-flow/run_tasks.py` (config `ai-flow/agents.yml`). On success a task
   file is MOVED into its feature's `done/` subfolder.
+- In CI: `.github/workflows/ai-flow-tasks.yml` ("ai-flow · run tasks") runs the same orchestrator from
+  the repo root on manual dispatch and opens a PR. It authenticates with the `CLAUDE_CODE_OAUTH_TOKEN`
+  secret. Agent commands in `agents.yml` must NOT use `--bare`: bare mode skips CLAUDE.md / `.claude/`
+  auto-discovery and ignores that token. To port the pipeline to another CI (GitLab, …), run
+  `ai-flow/docs/prompts/PROMT_CI.md` — it carries the invariants that must survive the port.
 - Completed work is journaled in `ai-flow/docs/CHANGELOG.md`. Reusable patterns go to Serena memory
   (see below), never the changelog — memory is the single knowledge store.
 

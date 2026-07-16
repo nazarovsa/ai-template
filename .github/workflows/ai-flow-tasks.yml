@@ -1,0 +1,267 @@
+name: ai-flow · run tasks
+
+# Runs pending tasks from ai-flow/docs/tasks/ with the ai-flow orchestrator and opens a PR.
+#
+# Every step runs from the repository root (see `defaults.working-directory`) so that Claude Code
+# auto-discovers CLAUDE.md, .claude/agents/, .claude/skills/ and .claude/settings.json from the
+# working directory. Do NOT add `--bare` to the agent command in ai-flow/agents.yml: bare mode skips
+# that auto-discovery AND ignores CLAUDE_CODE_OAUTH_TOKEN.
+#
+# Auth: secret CLAUDE_CODE_OAUTH_TOKEN — generate it locally with `claude setup-token` (needs a
+# Claude Pro/Max/Team/Enterprise subscription) and add it under
+# Settings → Secrets and variables → Actions.
+#
+# Only the `claude` agent is installed here. To run the codex/zcode agents from ai-flow/agents.yml,
+# add their CLI to the "Install the toolchain" step and their name to the `agent` input options.
+
+on:
+  workflow_dispatch:
+    inputs:
+      feature:
+        description: "Feature folder to run (name or substring). Empty = every pending task."
+        required: false
+        type: string
+      task:
+        description: "Single task to run (stem or substring). Takes precedence over `feature`."
+        required: false
+        type: string
+      agent:
+        description: "Agent from ai-flow/agents.yml"
+        required: false
+        default: claude
+        type: choice
+        options:
+          - claude
+      model:
+        description: "Model override. Empty = the agent's default from agents.yml."
+        required: false
+        type: string
+      dry_run:
+        description: "Print the plan without executing (no commits, no PR)."
+        required: false
+        default: false
+        type: boolean
+      draft_pr:
+        description: "Open the pull request as a draft."
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# One run at a time per branch: tasks mutate shared files and move task files into done/.
+concurrency:
+  group: ai-flow-tasks-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run-tasks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ github.workspace }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require the subscription token
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN}" ]; then
+            echo "::error::Secret CLAUDE_CODE_OAUTH_TOKEN is missing. Run 'claude setup-token' locally and add the token under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Provides the `python` shim that .claude/settings.json's SessionStart hook expects.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the toolchain
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pyyaml
+          npm install --global @anthropic-ai/claude-code
+          claude --version
+
+      - name: Create the run branch
+        id: branch
+        run: |
+          branch="ai-flow/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git config user.name "ai-flow"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+          echo "base=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      # An empty queue is a no-op, not a failure — run_tasks.py itself exits 1 when it finds no tasks.
+      # Reuses the orchestrator's own parser and config so the count matches what it would run.
+      - name: Look for pending tasks
+        id: pending
+        run: |
+          count=$(python - <<'PY'
+          import sys
+          sys.path.insert(0, "ai-flow")
+          import run_tasks as rt
+          cfg = rt.load_config(rt.DEFAULT_CONFIG)
+          tasks_dir = (cfg.get("context") or {}).get("tasks_dir", "ai-flow/docs/tasks")
+          print(len(rt.pending_tasks(rt.resolve(tasks_dir))))
+          PY
+          )
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Pending tasks: $count"
+          if [ "$count" -eq 0 ]; then
+            {
+              echo "## ai-flow run"
+              echo
+              echo "No pending tasks in \`ai-flow/docs/tasks/\` — nothing to do."
+              echo "Author one with the \`/new-task\` skill, commit it, then dispatch this workflow again."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # continue-on-error: a run that fails partway may still have completed tasks worth reviewing.
+      # The final step re-raises the failure once the PR exists.
+      - name: Run pending tasks
+        id: run
+        if: steps.pending.outputs.count != '0'
+        continue-on-error: true
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Inputs travel through the environment — never string-interpolated into the script.
+          IN_AGENT: ${{ inputs.agent }}
+          IN_MODEL: ${{ inputs.model }}
+          IN_FEATURE: ${{ inputs.feature }}
+          IN_TASK: ${{ inputs.task }}
+          IN_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--agent "$IN_AGENT")
+          if [ -n "$IN_MODEL" ]; then
+            args+=(--model "$IN_MODEL")
+          fi
+          if [ -n "$IN_FEATURE" ]; then
+            args+=(--feature "$IN_FEATURE")
+          fi
+          if [ -n "$IN_TASK" ]; then
+            args+=(--task "$IN_TASK")
+          fi
+          if [ "$IN_DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          echo "Running from: $(pwd)"
+          python ai-flow/run_tasks.py "${args[@]}"
+
+      - name: Collect the results
+        id: result
+        if: steps.pending.outputs.count != '0'
+        env:
+          # The run branch was cut from this commit, so it is the exact base for the diff.
+          BASE_SHA: ${{ github.sha }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          RUN_OUTCOME: ${{ steps.run.outcome }}
+          IN_AGENT: ${{ inputs.agent }}
+          IN_MODEL: ${{ inputs.model }}
+          IN_FEATURE: ${{ inputs.feature }}
+          IN_TASK: ${{ inputs.task }}
+        run: |
+          commits=$(git rev-list --count "${BASE_SHA}..HEAD")
+          echo "commits=$commits" >> "$GITHUB_OUTPUT"
+          # An explicit flag, not a `commits != '0'` comparison downstream: a skipped step yields an
+          # empty output, and '' != '0' would wrongly let the push/PR steps run.
+          if [ "$commits" -gt 0 ]; then
+            echo "create_pr=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "create_pr=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          {
+            echo "## ai-flow run"
+            echo
+            echo "- Orchestrator: \`${RUN_OUTCOME}\`"
+            echo "- Commits: ${commits}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$commits" -eq 0 ]; then
+            echo "- No commits — nothing to open a pull request for." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "Automated ai-flow run — tasks executed by \`ai-flow/run_tasks.py\` on branch \`${BRANCH}\`."
+            echo
+            echo "| Setting | Value |"
+            echo "| --- | --- |"
+            echo "| Agent | ${IN_AGENT} |"
+            echo "| Model | ${IN_MODEL:-agents.yml default} |"
+            echo "| Feature filter | ${IN_FEATURE:-(all pending)} |"
+            echo "| Task filter | ${IN_TASK:-(none)} |"
+            echo "| Orchestrator outcome | ${RUN_OUTCOME} |"
+            echo "| Workflow run | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} |"
+            echo
+            echo "### Tasks completed"
+            echo
+            # Task files the orchestrator moved into a feature's done/ folder during this run.
+            done_tasks=$(git diff --diff-filter=A --name-only "${BASE_SHA}..HEAD" -- 'ai-flow/docs/tasks/*/done/*.md')
+            if [ -n "$done_tasks" ]; then
+              echo "$done_tasks" | sed 's|^ai-flow/docs/tasks/|- `|; s|$|`|'
+            else
+              echo "_No task file moved into \`done/\` — review the commits below._"
+            fi
+            echo
+            echo "### Commits"
+            echo
+            git log --format='- %s' "${BASE_SHA}..HEAD"
+            echo
+            if [ "$RUN_OUTCOME" != "success" ]; then
+              echo "> [!WARNING]"
+              echo "> The orchestrator exited with a failure. This PR holds the tasks that completed before it stopped — check the run log before merging."
+            fi
+          } > "${RUNNER_TEMP}/pr-body.md"
+
+      - name: Push the branch
+        if: steps.result.outputs.create_pr == 'true'
+        run: git push --set-upstream origin "${{ steps.branch.outputs.name }}"
+
+      - name: Open the pull request
+        if: steps.result.outputs.create_pr == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ steps.branch.outputs.base }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          IN_FEATURE: ${{ inputs.feature }}
+          IN_TASK: ${{ inputs.task }}
+          DRAFT: ${{ inputs.draft_pr }}
+        run: |
+          scope="${IN_TASK:-${IN_FEATURE:-pending tasks}}"
+          title="ai-flow: ${scope} (run ${GITHUB_RUN_ID})"
+          draft_flag=()
+          if [ "$DRAFT" = "true" ]; then
+            draft_flag=(--draft)
+          fi
+          gh pr create \
+            --base "$BASE" \
+            --head "$BRANCH" \
+            --title "${title:0:155}" \
+            --body-file "${RUNNER_TEMP}/pr-body.md" \
+            "${draft_flag[@]}"
+          url=$(gh pr view "$BRANCH" --json url --jq .url)
+          echo "- Pull request: ${url}" >> "$GITHUB_STEP_SUMMARY"
+
+      # `== 'failure'` and not `!= 'success'`: a skipped run (empty queue) must not fail the job.
+      - name: Re-raise an orchestrator failure
+        if: steps.run.outcome == 'failure'
+        run: |
+          echo "::error::ai-flow/run_tasks.py failed — see the 'Run pending tasks' step."
+          exit 1

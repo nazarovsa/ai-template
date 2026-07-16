@@ -48,6 +48,7 @@ MANIFEST = [
     "ai-flow/docs/prompts/PROMT_TASKS.md",
     "ai-flow/docs/prompts/PROMT_AGENT.md",
     "ai-flow/docs/prompts/PROMT_SERENA.md",
+    "ai-flow/docs/prompts/PROMT_CI.md",
     "ai-flow/docs/specs/README.md",
     "ai-flow/docs/tasks/README.md",
     "ai-flow/docs/CHANGELOG.md",
@@ -62,6 +63,7 @@ MANIFEST = [
     ".serena/project.yml",
     ".serena/memories/suggested-commands.md",
     ".serena/memories/task-completion.md",
+    ".github/workflows/ai-flow-tasks.yml",
 ]
 
 COMM_LANG = {
