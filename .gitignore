@@ -3,6 +3,9 @@
 .claude/cache/
 .claude/tsc-cache/
 
+# --- OS junk ---
+.DS_Store
+
 # --- Python ---
 __pycache__/
 *.pyc
