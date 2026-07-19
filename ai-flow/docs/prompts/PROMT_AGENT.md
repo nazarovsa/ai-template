@@ -51,11 +51,21 @@ Your job is to implement exactly what the **Changes** section describes, make ev
    wrong, report it in your summary instead of silently dropping the case.
 7. DO NOT git commit — the orchestrator commits after you finish.
 
-## Quality Check
+## Quality Gate (blocking — no green build, no completion)
 
-After implementing, **build the project and run its tests with the project's own tooling**
-(consult `read_memory("build-and-verify")` for the exact commands). Fix ALL build and test
-failures before finishing.
+After implementing, **build the whole project and run its tests with the project's own tooling**
+(consult `read_memory("build-and-verify")` for the exact commands). This is a hard gate, not a
+formality:
+
+- The solution MUST compile/build cleanly and be runnable — no build errors, no unresolved
+  references, no broken project. Warnings that fail the build under project settings count as errors.
+- ALL tests (at least the ones the task introduced or touched) MUST pass.
+- Fix every build and test failure yourself. Do NOT weaken, skip, or delete tests to get green.
+- If you cannot make it build/pass, the task is **not complete**: do NOT print the completion
+  marker. Report what fails (the exact command and its error output) in your summary instead — a
+  reported failure is correct; a committed non-building solution is not.
+
+Never leave the tree in a state where the next agent (or CI) pulls a solution that does not build.
 
 ## Changelog Entry
 
@@ -100,5 +110,8 @@ If the task changed behavior, architecture, or commands, update the correspondin
 
 ## Completion
 
-When implementation is complete and the build passes, print exactly:
+Print the marker ONLY when the Quality Gate is green — the project builds and its tests pass. The
+marker is a promise that the committed solution compiles and runs; do not make it if that is false.
+
+When (and only when) implementation is complete and the build + tests pass, print exactly:
 <promise>COMPLETE</promise>

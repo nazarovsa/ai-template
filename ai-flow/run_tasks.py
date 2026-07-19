@@ -327,6 +327,9 @@ Feature: {task.feature}
 Remember:
 - Read existing code before writing.
 - Follow project rules (CLAUDE.md), the Feature DesignReview, and Serena memories.
+- BLOCKING: build the whole project and run its tests (read_memory("build-and-verify")). The solution
+  MUST compile/build and pass tests. If it does not build, the task is NOT done — do NOT print the
+  completion marker; report the failing command and its output instead.
 - Reusable patterns → document them as Serena memory (write_memory) + the CLAUDE.md table, NOT the changelog.
 - APPEND a factual changelog entry (what changed + files) to `{ctx["changelog_file"]}`.
 - Update the feature spec (living docs): ensure `{specs_dir}/{task.feature}/README.md` (target) exists

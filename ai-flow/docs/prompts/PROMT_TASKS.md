@@ -37,14 +37,41 @@ Decompose the following requirements into implementation tasks.
 
 ## Task Generation Rules
 
+### 0. Every Task Compiles and Builds (overriding invariant)
+
+**Each task must leave the whole solution in a buildable, compiling, test-passing state — every task
+is a COMPLETE slice, not a fragment.** After a single agent finishes any one task in isolation, the
+project must build and its tests must pass. This invariant OVERRIDES pure layering (§1): if honoring
+it forces a bit more into one task, do that rather than emit a task that ends on a red build.
+
+Concretely, when decomposing:
+
+- **Change + all its consumers ship together.** If a task changes a type, signature, interface, enum,
+  DTO, schema, or contract, that SAME task must also update every caller/consumer/implementer of it
+  in the codebase — so nothing is left referencing the old shape. Never split "change the type" and
+  "fix its usages" into two tasks: the first would commit a non-compiling tree.
+- **No forward references.** A task must not depend on a symbol/module/endpoint that a *later* task
+  will introduce. If code you write needs something, either it already exists, or the task that
+  creates it comes first via `Depends on:`, or you include a minimal real (not stubbed-out-broken)
+  version in this task.
+- **Temporary seams must compile.** If you deliberately stage work, the intermediate state still has
+  to build — use a real default/adapter/feature-flag, not a `// TODO` that leaves a dangling
+  reference or an unimplemented abstract member.
+- **Tests included in the task build too.** The `## Test Cases` you add must compile and pass at the
+  end of the same task, not "once the next task lands".
+
+State this expectation inside each task (its final Acceptance Criterion, §7) AND verify the whole set
+respects it before emitting.
+
 ### 1. One Layer per Task
 
 A task targets ONE architectural layer or concern. Do not mix data model
 and persistence, or backend and frontend, in the same task.
 
-**Exception:** tightly coupled cross-layer changes (e.g., a new UI screen
-that requires a small new API endpoint and store wiring) may be combined
-when splitting them would create artificial overhead.
+**Exception (subordinate to §0):** tightly coupled cross-layer changes (e.g., a new UI screen that
+requires a small new API endpoint and store wiring), or a contract change plus the consumers it
+breaks, MUST be combined when splitting them would leave a task on a non-building state. Buildability
+(§0) always wins over layer purity.
 
 ### 2. Atomicity
 
@@ -58,7 +85,11 @@ Every task specifies:
 - **Depends on:** `#X (what artifact it needs)` — must complete before this task
 - **Blocks:** `#Y (what it provides)` — tasks waiting on this one
 
-The graph must be a DAG (no cycles). Present it visually before the task list.
+The graph must be a DAG (no cycles). Present it visually before the task list. Order the tasks so
+that executing them one-by-one in order NEVER passes through a non-building state (§0): each task, on
+top of all the ones before it, compiles and its tests pass. When all tasks of the feature are done,
+the feature builds and runs as a whole — the last task must not be the one that "finally makes it
+compile".
 
 ### 4. Execution Order Between Layers
 
@@ -228,6 +259,8 @@ but enough for the agent to write the implementation without ambiguity.]
 
 1. [ ] [Specific, verifiable criterion]
 2. [ ] [Can be checked by reading code or running a test]
+3. [ ] The whole solution builds/compiles and its tests pass with the project's own tooling
+       (`read_memory("build-and-verify")`) — always the last criterion of every task.
 
 ---
 
@@ -248,6 +281,8 @@ but enough for the agent to write the implementation without ambiguity.]
 - Route paths and HTTP/status codes
 - A `## Test Cases` table per §6: unit-level, mocked dependencies, concrete inputs and
   expected results, hot paths + corner cases
+- A final Acceptance Criterion that the whole solution builds/compiles and its tests pass — every
+  task must leave the tree in a buildable, runnable state
 
 **NEVER include:**
 - Full implementation bodies (signatures + logic description is enough)
@@ -288,8 +323,13 @@ ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/
 ## Architecture   <affected components, approach, data/flow, key decisions>
 ## Scope          <in scope / out of scope>
 ## Tasks          <checklist of the task files in this folder>
-## Acceptance     <how we know the improvement is done>
+## Acceptance     <how we know the improvement is done — MUST include: after every task and after the
+                   whole feature, the solution builds/compiles and its tests pass (§0)>
 ```
+
+Every feature is decomposed so it stays green throughout: each task builds on its own (§0), and the
+completed feature builds and runs as a whole. The DesignReview must not plan a sequence whose
+intermediate steps leave the codebase non-compiling.
 
 ### 10. Dependencies and Conventions
 

@@ -14,6 +14,11 @@ You are a technical lead who authors implementation tasks for autonomous coding 
 
 - Take the decomposition rules, the DesignReview format, and the task format from
   `ai-flow/docs/prompts/PROMT_TASKS.md` and `ai-flow/docs/tasks/README.md`. Follow them precisely.
+- **Buildability invariant (PROMT_TASKS §0) is non-negotiable.** Every task must be a complete slice:
+  on its own it leaves the whole solution compiling, building, and passing tests. A change to a type,
+  signature, interface, enum, DTO, or contract MUST update all its consumers in the SAME task — never
+  split "change" and "fix usages". Order tasks so no intermediate step is a red build, and the
+  finished feature builds as a whole. Give each task a final Acceptance Criterion to that effect.
 - Before writing, study the existing code and call the relevant `read_memory(...)` from the CLAUDE.md
   "Project knowledge" table so tasks match project conventions.
 - Get the current timestamp with `date +%Y%m%d%H%M` (Bash) for folder/file names.

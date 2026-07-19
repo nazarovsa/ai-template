@@ -45,6 +45,11 @@ the table below with one row per created memory (never a row without a memory).
 
 ## Always-apply rules
 
+- **A task is done only if the solution builds and runs.** Before declaring completion — before
+  printing the completion marker or letting a commit happen — build the whole project and run its
+  tests with the project's own tooling (`read_memory("build-and-verify")`). A red build or a broken
+  run is an unfinished task: fix it or report failure. NEVER emit `<promise>COMPLETE</promise>` or
+  commit a solution that does not compile/build and pass its tests.
 - Task setup → artifacts only in `ai-flow/docs/tasks/` (format: `ai-flow/docs/tasks/README.md`).
 - **New/changed reusable pattern in code** → create/update the matching `.serena/memories/<name>.md`
   via `write_memory(...)` and keep the table above in sync. Never silently diverge from a memory —
