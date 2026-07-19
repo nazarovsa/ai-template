@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       feature:
-        description: "Feature folder to run (name or substring). Empty = every pending task."
+        description: "Feature folder to run (name or substring). All its tasks land in one branch + one PR. Empty = every pending task."
         required: false
         type: string
       task:
@@ -97,10 +97,19 @@ jobs:
           npm install --global @anthropic-ai/claude-code
           claude --version
 
+      # One branch off the dispatch ref (usually main) holds ALL of the feature's task commits;
+      # a later step opens exactly one PR from it. When a feature is given the branch is named after
+      # it (slugified) so the single branch/PR is clearly scoped to that feature.
       - name: Create the run branch
         id: branch
+        env:
+          IN_FEATURE: ${{ inputs.feature }}
         run: |
           branch="ai-flow/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if [ -n "$IN_FEATURE" ]; then
+            slug=$(printf '%s' "$IN_FEATURE" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/--*/-/g; s/^-//; s/-$//')
+            [ -n "$slug" ] && branch="ai-flow/${slug}-${GITHUB_RUN_ID}"
+          fi
           git config user.name "ai-flow"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
