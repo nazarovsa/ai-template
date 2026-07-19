@@ -20,9 +20,12 @@ never lag behind it.
 - **Specs (living):** for each implemented feature keep `ai-flow/docs/specs/<feature>/README.md`
   (**target** capability) and `IMPLEMENTED.md` (**as-built**) current, and maintain the "Feature index"
   in `ai-flow/docs/specs/README.md`.
-- **Memory:** on a new/changed reusable pattern, `write_memory("<name>", …)` (structure from
-  `PROMT_SERENA.md`) and keep the CLAUDE.md "Project knowledge" table in sync. Never silently diverge
-  from a memory.
+- **Memory:** on a new/changed reusable pattern OR a key domain business rule (formula, coefficient,
+  threshold, mechanic/economy invariant), `write_memory("<name>", …)` (structure from `PROMT_SERENA.md`
+  — pattern shape for conventions, knowledge shape for `domain-rules`) and keep the CLAUDE.md "Project
+  knowledge" table in sync. Curate `domain-rules` distinct from `domain-modeling`: the *rules
+  themselves* vs *how domain code is written*. On onboarding and every sync, reconcile `domain-rules`
+  with the code/specs and fix drift. Never silently diverge from a memory.
 
 ## Boundaries
 

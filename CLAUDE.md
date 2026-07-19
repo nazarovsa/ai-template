@@ -43,6 +43,11 @@ the table below with one row per created memory (never a row without a memory).
 |---|---|
 | _(none yet — run PROMT_SERENA)_ | |
 
+When PROMT_SERENA / `/sync-docs` runs, seed a `domain-rules` memory for the domain's business
+rules (formulas, coefficients, thresholds, invariants, economy) — distinct from `domain-modeling`
+(how domain code is written) — and add its row here. Until then `list_memories` won't show it;
+capture rules into it as domain logic is implemented (see the write path below).
+
 ## Always-apply rules
 
 - **A task is done only if the solution builds and runs.** Before declaring completion — before
@@ -51,9 +56,11 @@ the table below with one row per created memory (never a row without a memory).
   run is an unfinished task: fix it or report failure. NEVER emit `<promise>COMPLETE</promise>` or
   commit a solution that does not compile/build and pass its tests.
 - Task setup → artifacts only in `ai-flow/docs/tasks/` (format: `ai-flow/docs/tasks/README.md`).
-- **New/changed reusable pattern in code** → create/update the matching `.serena/memories/<name>.md`
-  via `write_memory(...)` and keep the table above in sync. Never silently diverge from a memory —
-  fix the memory or escalate the conflict.
+- **New/changed reusable pattern in code — or a key domain business rule** (formula, coefficient,
+  threshold, mechanic/economy invariant) → create/update the matching `.serena/memories/<name>.md`
+  (business rules → `domain-rules`) via `write_memory(...)` and keep the table above in sync. A changed
+  rule and its enforcing code move together. Never silently diverge from a memory — fix the memory or
+  escalate the conflict.
 - **Behavior/architecture changed** → update the corresponding file under `ai-flow/docs/` (spec / README)
   in the same change — docs must not lag behind code.
 - Git commits: a single-line message, **≤155 characters**. Do NOT mention Claude, AI, or any tool —

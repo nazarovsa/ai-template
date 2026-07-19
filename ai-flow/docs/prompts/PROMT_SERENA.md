@@ -14,6 +14,10 @@ instead of picking one.
 
 Categories:
 - Architecture & layering — module boundaries, dependency direction, where business logic lives
+- Domain business rules — the actual rules/mechanics/economy: formulas, coefficients, thresholds,
+  invariants, entity lifecycles, and where in the code each rule is enforced (this is the *rules
+  themselves*, distinct from "how domain code is written", which is the architecture/domain-modeling
+  category)
 - Error handling — exception types, propagation, what gets logged vs rethrown
 - Testing — framework, naming, structure (AAA/GWT), mocking conventions, location
 - Naming — files, types, methods, variables — note deviations from language defaults
@@ -35,10 +39,17 @@ A pattern qualifies only if ALL hold:
 Skip anything a linter/formatter enforces, anything language conventions already imply, and one-off
 historical decisions with no ongoing consequence.
 
+Besides *technical patterns*, capture **key domain business rules** as memory — the actual mechanics
+(formulas, coefficients, thresholds, invariants, entity lifecycles, economy). Qualify them the same
+way: non-obvious, stable, real cost when violated. Their trigger differs from `domain-modeling`: reach
+for `domain-modeling` to learn *how domain code is written*, and for `domain-rules` to learn or change
+*the rule itself*. Keep the rule and its enforcing code in sync — do not change one without the other.
+
 Group memories by *task trigger*, not topic. Ask: "When would the agent need this?" Aim for 5–10
 memories total, each ≤80 lines. Do NOT overwrite the shipped memories `suggested-commands` and
 `task-completion` — extend them if needed. Suggested triggers (drop any that don't apply, add others):
 - architecture-overview — before structural changes
+- domain-rules — the domain's business rules/mechanics: formulas, coefficients, invariants, economy
 - auth-conventions — when touching auth code
 - testing-patterns — before writing/modifying tests
 - db-access-rules — when adding queries or migrations
@@ -64,6 +75,24 @@ For each memory, use this structure, then save with `write_memory("<name>", "<co
 ## Anti-patterns
 - <What NOT to do, with the reason>
 
+For a **domain business-rule** memory (e.g. `domain-rules`), use this knowledge-shaped variant instead
+— it captures the rule, not a coding convention, so `Rationale` + `Source of truth` replace
+`Anti-patterns`:
+
+# <Name>
+
+## When to consult
+<1–2 lines: which tasks need the rule itself>
+
+## Rules & mechanics
+- <Rule in plain words> → <formula> → <concrete values/thresholds> → <invariants it must uphold>
+
+## Rationale / why
+- <Why the rule exists — the intent behind the number/formula>
+
+## Source of truth
+- <spec path> — where it's specified; <path/to/file.ext:line> — where the code enforces it
+
 ## Phase 4 — Update CLAUDE.md
 
 Add (or replace) the "Project knowledge (Serena memories)" section using direct tool calls. Keep the
@@ -79,6 +108,7 @@ Mandatory reads — call BEFORE the matching task:
 | Task trigger | Required call |
 |---|---|
 | Structural changes, new modules | `read_memory("architecture-overview")` |
+| Domain rules, formulas, invariants, economy | `read_memory("domain-rules")` |
 | Touching auth/authz code | `read_memory("auth-conventions")` |
 | Writing or modifying tests | `read_memory("testing-patterns")` |
 | Adding DB queries or migrations | `read_memory("db-access-rules")` |

@@ -123,6 +123,9 @@ Every task type has mandatory content. The agent cannot guess — be explicit.
 - Concrete numeric values, not "configurable" — state the actual value
 - Edge cases and error conditions
 - Unit tests: specific inputs → expected outputs
+- Reference `read_memory("domain-rules")` for the existing rule/mechanic, and add a final acceptance
+  criterion: the new/changed rule (formula, coefficient, invariant) is captured in the `domain-rules`
+  memory (the executor persists it — see `PROMT_AGENT.md` "Consolidate Knowledge")
 
 **Services / use cases:**
 - Interface with complete method signatures
@@ -335,7 +338,9 @@ intermediate steps leave the codebase non-compiling.
 
 - `Depends on:` references other tasks **by their file name (or a substring)**, or `none`.
 - If the project has conventions, reference the relevant Serena memory inline
-  (e.g. `read_memory("architecture-overview")`) so the agent knows where to look.
+  (e.g. `read_memory("architecture-overview")`) so the agent knows where to look. For domain-logic
+  tasks, point at `read_memory("domain-rules")` — the business rule/mechanic itself, distinct from
+  `domain-modeling` (how domain code is written).
 
 ## Output Format
 

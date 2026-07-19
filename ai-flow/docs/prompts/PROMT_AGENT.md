@@ -31,7 +31,9 @@ Your job is to implement exactly what the **Changes** section describes, make ev
 1. Read `CLAUDE.md` (project rules) — provided above.
 2. From the CLAUDE.md "Project knowledge" table, call the `read_memory(...)` entries that match this
    task's trigger. Serena memories are plain `.md` files under `.serena/memories/` — read them directly
-   if the Serena MCP is unavailable.
+   if the Serena MCP is unavailable. For a task that implements or changes domain logic, also call
+   `read_memory("domain-rules")` — that memory holds the business rule/mechanic itself (formulas,
+   coefficients, invariants), separate from `domain-modeling` (how domain code is written).
 3. If the task references specifications, read the relevant files from `ai-flow/docs/specs/`.
 4. Skim `ai-flow/docs/CHANGELOG.md` for recent history (what changed lately). Patterns come from
    Serena memories, not the changelog.
@@ -93,12 +95,17 @@ For the current feature `<feature>`, keep `ai-flow/docs/specs/<feature>/` up to 
 Also add the feature to the "Feature index" in `ai-flow/docs/specs/README.md` if not present.
 Do NOT move the task file to `done/` — the orchestrator does that on success.
 
-## Consolidate Knowledge (patterns → memory, not the changelog)
+## Consolidate Knowledge (patterns & domain rules → memory, not the changelog)
 
-If you introduced or changed a **reusable pattern**, document it ONLY as Serena memory:
+If you introduced or changed a **reusable pattern** OR a **key domain business rule** (a formula,
+coefficient, threshold, or mechanic/economy invariant), document it ONLY as Serena memory:
 - Save it with `write_memory("<name>", "<content>")` (or update the existing one). Use the memory
-  structure from `PROMT_SERENA.md` (When to consult / Rules / Canonical examples / Anti-patterns),
-  grouped by *task trigger* (e.g. `testing-patterns`, `db-access-rules`).
+  structure from `PROMT_SERENA.md` — the pattern shape (When to consult / Rules / Canonical examples /
+  Anti-patterns) for conventions, and the knowledge shape (When to consult / Rules & mechanics /
+  Rationale / Source of truth) for a business rule → `domain-rules`. Group by *task trigger* (e.g.
+  `testing-patterns`, `db-access-rules`, `domain-rules`).
+- A changed domain rule and its enforcing code must move together — never ship a new formula/coefficient
+  without updating `domain-rules`.
 - Keep the "Project knowledge" table in `CLAUDE.md` in sync (add/adjust the row). Never silently
   diverge from a memory — fix the memory or flag the conflict.
 
