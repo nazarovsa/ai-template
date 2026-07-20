@@ -307,6 +307,10 @@ ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/
 └── done/                              # run_tasks.py MOVES completed tasks here (do not pre-create)
 ```
 
+When every task of a feature is done, run_tasks.py MOVES the whole feature folder into the global
+archive `ai-flow/docs/tasks/done/<YYYYMMddHHmm_FEATURE_NAME>/`. Do not pre-create `tasks/done/`, and
+never author a new feature named `done` — that name is reserved for the archive.
+
 - `YYYYMMddHHmm` — a timestamp; obtain the current one with `date +%Y%m%d%H%M`.
 - `FEATURE_NAME` — kebab-case name of the improvement (e.g. `user-login`, `fix-webhook-retry`).
 - `TASK_SUMMARY` — a short task name, **≤5 English words, kebab-case** (e.g. `add-login-endpoint`).

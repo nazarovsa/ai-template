@@ -19,7 +19,8 @@ Load Serena memories and docs **on demand** — do not preload everything into c
   `ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE>/` with a `README.md` (DesignReview), task files
   `<YYYYMMddHHmm_TASK>.md`, and a `done/` subfolder (see `ai-flow/docs/tasks/README.md`).
 - Automated execution: `python ai-flow/run_tasks.py` (config `ai-flow/agents.yml`). On success a task
-  file is MOVED into its feature's `done/` subfolder.
+  file is MOVED into its feature's `done/` subfolder; once ALL tasks of a feature are done, the whole
+  feature folder is MOVED into the global archive `ai-flow/docs/tasks/done/<feature>/`.
 - In CI: `.github/workflows/ai-flow-tasks.yml` ("ai-flow · run tasks") runs the same orchestrator from
   the repo root on manual dispatch and opens a PR. It authenticates with the `CLAUDE_CODE_OAUTH_TOKEN`
   secret. Agent commands in `agents.yml` must NOT use `--bare`: bare mode skips CLAUDE.md / `.claude/`

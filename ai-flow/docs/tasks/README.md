@@ -4,11 +4,17 @@
 
 ```
 ai-flow/docs/tasks/
-└── YYYYMMddHHmm_FEATURE_NAME/          # FEATURE_NAME — kebab-case название доработки
-    ├── README.md                       # DesignReview доработки (шаблон ниже)
-    ├── YYYYMMddHHmm_TASK_SUMMARY.md     # задача; TASK_SUMMARY — ≤5 англ. слов через "-"
-    └── done/                            # сюда run_tasks.py ПЕРЕМЕЩАЕТ выполненные задачи
+├── YYYYMMddHHmm_FEATURE_NAME/          # FEATURE_NAME — kebab-case название доработки
+│   ├── README.md                       # DesignReview доработки (шаблон ниже)
+│   ├── YYYYMMddHHmm_TASK_SUMMARY.md     # задача; TASK_SUMMARY — ≤5 англ. слов через "-"
+│   └── done/                            # сюда run_tasks.py ПЕРЕМЕЩАЕТ выполненные задачи
+└── done/                               # глобальный каталог: сюда run_tasks.py ПЕРЕМЕЩАЕТ
+    └── YYYYMMddHHmm_FEATURE_NAME/       # ПОЛНОСТЬЮ выполненные фичи (все задачи в done/)
 ```
+
+- `done/` в корне `tasks/` — архив завершённых доработок, а не папка фичи: как только все задачи
+  доработки уехали в её `done/`, `run_tasks.py` ПЕРЕМЕЩАЕТ всю папку доработки в `tasks/done/`.
+  Дискавери задач эту папку игнорирует; зависимости на задачи из архивных фич по-прежнему видны.
 
 - `YYYYMMddHHmm` — таймстамп (получить: `date +%Y%m%d%H%M`).
 - Задачи выполняются в порядке имён (таймстамп → хронология); строка `Depends on:` уточняет порядок.

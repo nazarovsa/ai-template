@@ -15,7 +15,8 @@ Route execution of the task runner to the `task-runner` subagent.
    If the feature is unclear, `ls ai-flow/docs/tasks/` and confirm.
 2. Delegate to the **task-runner** subagent (via the Agent/Task tool), passing the feature and the mode
    (whole feature vs. next task) plus any `--agent` / `--model` override the user requested.
-3. Report which tasks ran, what moved to `done/`, commits made, and anything that failed or is blocked.
+3. Report which tasks ran, what moved to `done/`, whether the feature was fully completed and archived
+   into `tasks/done/`, commits made, and anything that failed or is blocked.
 
 This skill is thin — all logic lives in the `task-runner` subagent. Do not invoke `run_tasks.py` inline
 here.

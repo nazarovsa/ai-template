@@ -37,7 +37,8 @@ launch the runner, and report what happened.
 python ai-flow/run_tasks.py --feature <FEATURE>
 ```
 This executes every ready task in the feature, one after another, moving each to `done/` and committing
-(per `agents.yml` `git:`), until none remain or a task fails 3× in a row.
+(per `agents.yml` `git:`), until none remain or a task fails 3× in a row. When the feature's last task
+is done, the whole feature folder is moved into the global archive `ai-flow/docs/tasks/done/<feature>/`.
 
 ## Run — the next single task
 
@@ -65,4 +66,5 @@ This executes every ready task in the feature, one after another, moving each to
 ## Report
 
 State the mode (whole feature vs. next task), the exact command run, which tasks completed and moved to
-`done/`, any commits made, and anything that failed or is blocked on unmet dependencies.
+`done/`, whether the feature was fully completed and archived into `tasks/done/`, any commits made, and
+anything that failed or is blocked on unmet dependencies.

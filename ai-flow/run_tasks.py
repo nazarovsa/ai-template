@@ -13,6 +13,9 @@ Tasks are grouped by feature. Each feature is a folder; each task is a file insi
     ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE>/<YYYYMMddHHmm_TASK>.md  # a task
 On completion a task file is MOVED to the feature's done/ subfolder:
     ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE>/done/<...>.md
+When ALL tasks of a feature are done, the whole feature folder is MOVED into the
+global done/ catalog (archive of fully completed features):
+    ai-flow/docs/tasks/done/<YYYYMMddHHmm_FEATURE>/
 Pending tasks run in filename order (timestamp prefix => chronological); explicit
 `Depends on:` lines gate ordering. `README.md` inside a feature folder is not a task.
 
@@ -92,13 +95,27 @@ class Task:
 # ---------------------------------------------------------------------------
 # Task discovery — tasks live in feature folders; completed tasks move to done/
 #   ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE>/<YYYYMMddHHmm_TASK>.md
-#   ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE>/done/<...>.md   (completed)
+#   ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE>/done/<...>.md   (completed task)
+#   ai-flow/docs/tasks/done/<YYYYMMddHHmm_FEATURE>/           (fully completed feature)
 # ---------------------------------------------------------------------------
 
+DONE_DIR = "done"  # both the per-feature done/ subfolder and the global done/ catalog
+
+
 def _feature_dirs(tasks_dir: Path) -> list[Path]:
+    """Active (not fully completed) feature folders. Excludes the global done/ catalog."""
     if not tasks_dir.exists():
         return []
-    return [d for d in sorted(tasks_dir.iterdir()) if d.is_dir() and not d.name.startswith(".")]
+    return [d for d in sorted(tasks_dir.iterdir())
+            if d.is_dir() and not d.name.startswith(".") and d.name != DONE_DIR]
+
+
+def _archived_feature_dirs(tasks_dir: Path) -> list[Path]:
+    """Feature folders archived into the global done/ catalog (fully completed features)."""
+    catalog = tasks_dir / DONE_DIR
+    if not catalog.exists():
+        return []
+    return [d for d in sorted(catalog.iterdir()) if d.is_dir() and not d.name.startswith(".")]
 
 
 def _parse_deps(content: str) -> list[str]:
@@ -115,8 +132,8 @@ def _parse_deps(content: str) -> list[str]:
 
 def completed_stems(tasks_dir: Path) -> set[str]:
     done: set[str] = set()
-    for feat in _feature_dirs(tasks_dir):
-        dd = feat / "done"
+    for feat in _feature_dirs(tasks_dir) + _archived_feature_dirs(tasks_dir):
+        dd = feat / DONE_DIR
         if dd.exists():
             done |= {p.stem for p in dd.glob("*.md")}
     return done
@@ -153,12 +170,28 @@ def feature_readme(tasks_dir: Path, feature: str) -> str:
 
 def mark_done(task: Task) -> None:
     assert task.file is not None
-    dest = task.file.parent / "done"
+    dest = task.file.parent / DONE_DIR
     dest.mkdir(exist_ok=True)
     new_path = dest / task.file.name
     task.file.rename(new_path)
     task.file = new_path
-    print(f"  -> {task.feature}/done/{new_path.name}")
+    print(f"  -> {task.feature}/{DONE_DIR}/{new_path.name}")
+
+
+def _has_pending_tasks(feature_dir: Path) -> bool:
+    """A feature is still active while any task file remains at its top level (README excluded)."""
+    return any(p.stem.lower() != "readme" for p in feature_dir.glob("*.md"))
+
+
+def archive_feature_if_complete(tasks_dir: Path, feature: str) -> None:
+    """Once every task of a feature is done, move the whole feature folder into done/."""
+    feature_dir = tasks_dir / feature
+    if not feature_dir.exists() or _has_pending_tasks(feature_dir):
+        return
+    catalog = tasks_dir / DONE_DIR
+    catalog.mkdir(exist_ok=True)
+    feature_dir.rename(catalog / feature)
+    print(f"  ==> feature complete: {feature}/ -> {DONE_DIR}/{feature}/")
 
 
 # ---------------------------------------------------------------------------
@@ -485,6 +518,7 @@ def main() -> None:
         if success:
             if not args.dry_run:
                 mark_done(task)
+                archive_feature_if_complete(tasks_dir, task.feature)
                 if not commit_task(task, git_cfg):
                     sys.exit(1)
             failures = 0
