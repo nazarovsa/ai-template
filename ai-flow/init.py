@@ -11,14 +11,13 @@ CLAUDE.md, AGENTS.md, .claude/ and .serena/ (tools auto-discover these there).
 Usage:
     python ai-flow/init.py init [--target DIR] [--tool TOOL] [--lang LANG] [--comm-lang LANG] [--force] [--no-serena]
     python ai-flow/init.py adapt --tool TOOL [--target DIR]
-    python ai-flow/init.py setup-serena --tool TOOL [--target DIR]
+    python ai-flow/init.py setup-mcp --tool TOOL [--target DIR]   (alias: setup-serena)
     python ai-flow/init.py list-tools
 """
 
 import argparse
 import json
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -33,6 +32,10 @@ RUNNABLE_AGENTS = {"claude", "codex", "zcode"}  # can be default_agent in agents
 SUBAGENTS = ["prd-author", "task-author", "doc-keeper"]
 SERENA_REPO = "git+https://github.com/oraios/serena"
 HOOK_COMMAND = "python ai-flow/hooks/check_memory_sync.py"
+# MCP servers declared in the committed .mcp.json — Claude Code must trust them non-interactively
+# (under --dangerously-skip-permissions) via .claude/settings.json's enabledMcpjsonServers.
+MCPJSON_SERVERS = ["serena", "codebase-memory-mcp"]
+GRAPH_BIN = "codebase-memory-mcp"
 
 # Template files copied on `init` (relative to the repo root).
 MANIFEST = [
@@ -40,6 +43,7 @@ MANIFEST = [
     "CLAUDE.md",
     "AGENTS.md",
     ".gitignore",
+    ".mcp.json",
     "ai-flow/run_tasks.py",
     "ai-flow/init.py",
     "ai-flow/agents.yml",
@@ -157,8 +161,10 @@ def merge_gitignore(target: Path) -> None:
     info("updated .gitignore")
 
 
-def wire_hooks(target: Path, tool: str) -> None:
-    """Merge the SessionStart memory-sync hook into <target>/.claude/settings.json."""
+def merge_settings(target: Path, tool: str) -> None:
+    """Merge the SessionStart memory-sync hook AND the enabledMcpjsonServers trust list into
+    <target>/.claude/settings.json. Without the latter the .mcp.json servers never start under
+    `--dangerously-skip-permissions`."""
     if tool not in ("claude", "zcode"):
         return
     settings = target / ".claude" / "settings.json"
@@ -168,20 +174,33 @@ def wire_hooks(target: Path, tool: str) -> None:
         try:
             data = json.loads(settings.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            info("existing .claude/settings.json is not valid JSON — add the hook manually")
+            info("existing .claude/settings.json is not valid JSON — add the hook + enabledMcpjsonServers manually")
             return
+    changed = False
+
+    # Trust the committed .mcp.json servers (Serena + code graph) — union, preserving order.
+    trusted = data.setdefault("enabledMcpjsonServers", [])
+    for name in MCPJSON_SERVERS:
+        if name not in trusted:
+            trusted.append(name)
+            changed = True
+
+    # Register the SessionStart memory-sync hook (idempotent).
     session = data.setdefault("hooks", {}).setdefault("SessionStart", [])
     already = any(
         h.get("command") == HOOK_COMMAND
         for group in session if isinstance(group, dict)
         for h in group.get("hooks", []) if isinstance(h, dict)
     )
-    if already:
-        info("SessionStart memory-sync hook already registered")
+    if not already:
+        session.append({"hooks": [{"type": "command", "command": HOOK_COMMAND}]})
+        changed = True
+
+    if not changed:
+        info("SessionStart hook + enabledMcpjsonServers already present in .claude/settings.json")
         return
-    session.append({"hooks": [{"type": "command", "command": HOOK_COMMAND}]})
     settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    info("registered SessionStart memory-sync hook in .claude/settings.json")
+    info("merged SessionStart hook + enabledMcpjsonServers into .claude/settings.json")
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +267,7 @@ def generate_adapters(target: Path, tool: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Serena MCP setup
+# MCP setup (Serena + codebase-memory-mcp code graph)
 # ---------------------------------------------------------------------------
 
 def _uvx_args(context: str, target: Path) -> list[str]:
@@ -256,24 +275,25 @@ def _uvx_args(context: str, target: Path) -> list[str]:
             "--context", context, "--project", str(target)]
 
 
-def setup_serena(target: Path, tool: str) -> None:
+def setup_mcp(target: Path, tool: str) -> None:
     if shutil.which("uvx") is None:
-        info("uvx not found — install `uv` (https://astral.sh/uv), then re-run setup-serena.")
+        info("uvx not found — install `uv` (https://astral.sh/uv), then re-run setup-mcp.")
 
     if tool in ("claude", "zcode"):
-        args = _uvx_args("ide-assistant", target)
-        claude = shutil.which("claude")
-        if claude:
-            r = subprocess.run([claude, "mcp", "add", "serena", "--", "uvx", *args],
-                               capture_output=True, text=True)
-            if r.returncode == 0:
-                info("registered Serena MCP with Claude Code")
-            else:
-                info("claude mcp add failed; run manually:")
-                print(f"    claude mcp add serena -- uvx {' '.join(args)}")
+        # The committed project-level .mcp.json is the single source of truth (local + CI): it
+        # declares both Serena and codebase-memory-mcp. Do NOT `claude mcp add serena` — that
+        # registers a second copy at user scope and double-registers the server. Just verify the
+        # file and the runtime dependencies, then remind about the trust list.
+        mcp = target / ".mcp.json"
+        if mcp.exists():
+            info(".mcp.json present — project-level source for serena + codebase-memory-mcp")
         else:
-            info("`claude` not found; run manually:")
-            print(f"    claude mcp add serena -- uvx {' '.join(args)}")
+            info("WARNING: .mcp.json is missing — re-run `init` (or copy it from the template).")
+        if shutil.which(GRAPH_BIN) is None:
+            info(f"{GRAPH_BIN} not found on PATH — install it (README: 'Запуск задач в GitHub "
+                 "Actions') so the code graph is available.")
+        info("Claude Code trusts both servers via .claude/settings.json → enabledMcpjsonServers "
+             "(merged by init).")
 
     elif tool == "codex":
         cfg = Path.home() / ".codex" / "config.toml"
@@ -329,9 +349,9 @@ def cmd_init(args) -> None:
     apply_tool_default(target, tool)
     merge_gitignore(target)
     generate_adapters(target, tool)
-    wire_hooks(target, tool)
+    merge_settings(target, tool)
     if not args.no_serena:
-        setup_serena(target, tool)
+        setup_mcp(target, tool)
 
     print("\nDone. Next steps:")
     print("  1) Verify .serena/project.yml language and ai-flow/agents.yml agent flags.")
@@ -349,11 +369,11 @@ def cmd_adapt(args) -> None:
     generate_adapters(target, args.tool)
 
 
-def cmd_setup_serena(args) -> None:
+def cmd_setup_mcp(args) -> None:
     if args.tool not in SUPPORTED_TOOLS:
         print(f"ERROR: unknown tool '{args.tool}'. Supported: {', '.join(SUPPORTED_TOOLS)}")
         sys.exit(1)
-    setup_serena(Path(args.target).resolve(), args.tool)
+    setup_mcp(Path(args.target).resolve(), args.tool)
 
 
 def cmd_list_tools(_args) -> None:
@@ -382,10 +402,11 @@ def main() -> None:
     pa.add_argument("--target", default=".")
     pa.set_defaults(func=cmd_adapt)
 
-    ps = sub.add_parser("setup-serena", help="configure the Serena MCP server for a tool")
+    ps = sub.add_parser("setup-mcp", aliases=["setup-serena"],
+                        help="configure the MCP servers (Serena + code graph) for a tool")
     ps.add_argument("--tool", required=True)
     ps.add_argument("--target", default=".")
-    ps.set_defaults(func=cmd_setup_serena)
+    ps.set_defaults(func=cmd_setup_mcp)
 
     pl = sub.add_parser("list-tools", help="list supported tools")
     pl.set_defaults(func=cmd_list_tools)

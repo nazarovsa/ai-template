@@ -78,6 +78,16 @@ implement the closest equivalent and record the gap in the final report.
     document how to add `codex`/`zcode`.
 12. **Never interpolate a user-supplied parameter into a shell command.** Pass it through the
     environment and quote it, so a crafted parameter cannot inject shell code.
+13. **MCP provisioning.** `.mcp.json` registers Serena (via `uvx`) and codebase-memory-mcp (the code
+    graph, from a one-line installer); `.claude/settings.json` trusts both through
+    `enabledMcpjsonServers`, or under `--dangerously-skip-permissions` they never start. The runner
+    MUST have `uvx` and the `codebase-memory-mcp` binary on `PATH`. Before the tasks run: a non-fatal
+    `claude mcp list` check and a non-fatal `index_repository --mode fast` graph warm-up whose project
+    **name equals the repository name** — codebase-memory-mcp derives the name from the repo path's
+    basename, so a mismatch (e.g. a hard-coded name) makes the agent query a different, empty graph.
+    The graph cache is the default `~/.cache/codebase-memory-mcp`, shared between the warm-up and the
+    agent. Serena memories stay readable as plain files even if the server never comes up, so every
+    MCP step here is best-effort and MUST NOT fail the job.
 
 ## Target-specific translation
 
@@ -128,7 +138,7 @@ have this limitation).
 4. Every step that consumes a parameter reads it from the environment, quoted — grep the file to
    confirm no parameter is interpolated into a command string.
 5. `run_tasks.py` is unmodified — `git diff` it to be sure.
-6. Each of the 12 invariants is either implemented or listed as a gap in the report.
+6. Each of the 13 invariants is either implemented or listed as a gap in the report.
 
 ## Final report
 

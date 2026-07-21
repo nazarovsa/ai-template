@@ -18,7 +18,7 @@ Whenever you need to run the flow: execute tasks, initialize/adapt the template,
 - `python ai-flow/init.py init --tool claude --lang python --comm-lang en` — deploy the flow here.
 - `python ai-flow/init.py init --target <DIR> --tool codex` — deploy into another repo.
 - `python ai-flow/init.py adapt --tool cursor` — (re)generate tool adapters.
-- `python ai-flow/init.py setup-serena --tool claude` — configure the Serena MCP server for a tool.
+- `python ai-flow/init.py setup-mcp --tool claude` — verify MCP (Serena + code graph) for a tool (alias: setup-serena).
 - `python ai-flow/init.py list-tools` — supported tools.
 
 ### Hooks

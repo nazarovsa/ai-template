@@ -11,6 +11,13 @@ name: ai-flow · run tasks
 # Claude Pro/Max/Team/Enterprise subscription) and add it under
 # Settings → Secrets and variables → Actions.
 #
+# MCP provisioning: the committed `.mcp.json` declares Serena (via uvx) and codebase-memory-mcp (the
+# code graph); `.claude/settings.json` trusts both through `enabledMcpjsonServers`, so they start
+# even under `--dangerously-skip-permissions`. This job installs `uv` and the codebase-memory-mcp
+# binary so both servers resolve, verifies them (non-fatal), and warms the graph before the run. Both
+# the verify and the warm-up are best-effort: Serena memories are plain files and the agent falls back
+# to them if a server is down, so neither must fail the job.
+#
 # Only the `claude` agent is installed here. To run the codex/zcode agents from ai-flow/agents.yml,
 # add their CLI to the "Install the toolchain" step and their name to the `agent` input options.
 
@@ -91,11 +98,37 @@ jobs:
         with:
           python-version: "3.12"
 
+      # `uvx` launches the Serena MCP server declared in .mcp.json.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Install the toolchain
         run: |
           python -m pip install --disable-pip-version-check --quiet pyyaml
           npm install --global @anthropic-ai/claude-code
           claude --version
+
+      # The codebase-memory-mcp binary backs the code-graph MCP server in .mcp.json. Its one-line
+      # installer drops the binary into ~/.local/bin, which must be on PATH for later steps.
+      # `--skip-config` keeps the run hermetic: the committed .mcp.json is the single registration
+      # source, so the installer must not also poke at the agent's user config.
+      - name: Install codebase-memory-mcp
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash -s -- --skip-config
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Non-fatal sanity check: log the MCP servers Claude Code sees from .mcp.json. A server that is
+      # down is only a warning — Serena memories are plain files and the agent degrades to them.
+      - name: Verify MCP servers
+        continue-on-error: true
+        run: |
+          {
+            echo "## MCP servers"
+            echo
+            echo '```'
+            claude mcp list 2>&1 || echo "::warning::claude mcp list failed — agents fall back to Serena memories + files"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       # One branch off the dispatch ref (usually main) holds ALL of the feature's task commits;
       # a later step opens exactly one PR from it. When a feature is given the branch is named after
@@ -140,6 +173,42 @@ jobs:
               echo "Author one with the \`/new-task\` skill, commit it, then dispatch this workflow again."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      # Warm the code graph before the agent runs so its first codebase-memory-mcp query hits a fresh
+      # index. Best-effort: on failure the agent still has Serena + files. The project name must match
+      # codebase-memory-mcp's default derivation (basename of the repo path = the GitHub repo name), or
+      # the agent would query a differently-named, empty graph. Built with json.dumps so the repo name
+      # is never interpolated into the shell.
+      - name: Warm up the code graph
+        id: graph
+        if: steps.pending.outputs.count != '0'
+        continue-on-error: true
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          payload=$(python - <<'PY'
+          import json, os
+          print(json.dumps({
+              "repo_path": os.environ["WORKSPACE"],
+              "mode": "fast",
+              "name": os.environ["REPO_NAME"],
+          }))
+          PY
+          )
+          echo "Indexing ${REPO_NAME} (fast) …"
+          if codebase-memory-mcp cli index_repository "$payload"; then
+            status="indexed"
+          else
+            status="skipped (indexing failed — agent falls back to Serena + files)"
+          fi
+          {
+            echo "## Code graph warm-up"
+            echo
+            echo "- Project: \`${REPO_NAME}\`"
+            echo "- Mode: fast"
+            echo "- Status: ${status}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # continue-on-error: a run that fails partway may still have completed tasks worth reviewing.
       # The final step re-raises the failure once the PR exists.

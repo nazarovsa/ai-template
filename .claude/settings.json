@@ -1,4 +1,8 @@
 {
+  "enabledMcpjsonServers": [
+    "serena",
+    "codebase-memory-mcp"
+  ],
   "hooks": {
     "SessionStart": [
       {
