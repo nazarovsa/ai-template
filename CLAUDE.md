@@ -55,6 +55,31 @@ rules (formulas, coefficients, thresholds, invariants, economy) — distinct fro
 (how domain code is written) — and add its row here. Until then `list_memories` won't show it;
 capture rules into it as domain logic is implemented (see the write path below).
 
+## Implementation rules (core templates)
+
+`ai-flow/docs/core_templates/` is **normative**, not reference material. Any code written in this
+repository follows it:
+
+| Template | Scope | Read it before |
+|---|---|---|
+| `core_templates/backend_template.md` | .NET 10 backend: solution layout, layering, domain, EF Core, services, HTTP API, JWT auth with roles, errors, options, DI, tests, build | touching any `.cs` file, `.csproj`, migration, or backend structure |
+| `core_templates/frontend_template.md` | Next.js App Router frontend: directory tree, layer/import rules, data access, state, i18n, styling, config | touching any `.ts`/`.tsx` file or frontend structure |
+
+- **Load the relevant template on demand** — before writing or reviewing code of that kind, not at
+  session start. They are long; read the sections you need.
+- The templates win over habit and over patterns found in unrelated code. When project reality and a
+  template disagree, that is a defect: fix the code, or change the template deliberately and say so —
+  never silently diverge.
+- Each template ends with a **feature checklist** and an **antipatterns** list. Walk the checklist
+  before declaring a feature done; the antipatterns are review-blocking.
+- Fixed by the templates, not open for per-task reinvention: **.NET 10**, **JWT Bearer with roles**
+  as the only auth mechanism (static API keys are forbidden), Central Package Management, migrations
+  only in the migrator project, xUnit + NSubstitute.
+- A project on a different stack drops or replaces the template that does not apply — but states the
+  replacement in this section rather than leaving the rule dangling.
+- Changing a template is a documentation change like any other: update it in the same commit as the
+  code that motivated it, and reflect any reusable pattern into the matching Serena memory.
+
 ## Code graph (codebase-memory-mcp)
 
 The committed `.mcp.json` wires two MCP servers and `.claude/settings.json` trusts both via
@@ -75,6 +100,8 @@ In CI, `.github/workflows/ai-flow-tasks.yml` provisions this itself — it insta
   tests with the project's own tooling (`read_memory("build-and-verify")`). A red build or a broken
   run is an unfinished task: fix it or report failure. NEVER emit `<promise>COMPLETE</promise>` or
   commit a solution that does not compile/build and pass its tests.
+- **Code follows `ai-flow/docs/core_templates/`** — backend and frontend templates are binding.
+  Read the relevant one before writing code; walk its feature checklist before declaring done.
 - Task setup → artifacts only in `ai-flow/docs/tasks/` (format: `ai-flow/docs/tasks/README.md`).
 - **New/changed reusable pattern in code — or a key domain business rule** (formula, coefficient,
   threshold, mechanic/economy invariant) → create/update the matching `.serena/memories/<name>.md`
