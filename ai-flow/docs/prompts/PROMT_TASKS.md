@@ -346,7 +346,81 @@ intermediate steps leave the codebase non-compiling.
   tasks, point at `read_memory("domain-rules")` — the business rule/mechanic itself, distinct from
   `domain-modeling` (how domain code is written).
 
+### 11. Implementation Milestones (separate roadmap file)
+
+A PRD is never cut into tasks in one go. **Before decomposing the first feature of a new PRD, split
+the whole scope into key implementation milestones and write them to a dedicated file:**
+`ai-flow/docs/tasks/MILESTONES.md`. Feature folders are the unit of execution; milestones are the
+unit of planning above them, and they live in their own file so the plan survives independently of
+any single feature folder (which gets MOVED into the archive once completed).
+
+**11.1. What a milestone is**
+
+A milestone is a slice of the PRD that delivers a verifiable capability and can be checked against
+reality: "backend foundation runs and is covered by tests", "an organizer can publish a folder and it
+appears in the public catalog". It is NOT a layer ("all the repositories") and NOT a calendar period.
+Derive milestones from the PRD's functional requirements and from the order the specs imply, then
+name for each one: goal, covered requirements/specs, member feature folders, exit criteria.
+
+**11.2. `MILESTONES.md` format**
+
+```markdown
+# Implementation milestones — <Project>
+
+> Planning layer above feature folders. Updated after every milestone checkpoint.
+
+## M1 — <name>
+- Status: planned | in-progress | done
+- Goal: <the capability this milestone delivers>
+- Covers: <PRD requirements / spec files>
+- Features: <feature folder names, in execution order>
+- Exit criteria: <what must be true and verifiable when the milestone ends>
+- Checkpoint: <the checkpoint task file that closes this milestone>
+
+## M2 — <name>
+...
+```
+
+Only the milestone being worked on needs its feature list filled in detail; later milestones carry
+goal, coverage and exit criteria, and are refined at the preceding checkpoint (§11.3) — planning them
+task-by-task upfront produces tasks that go stale before anyone reaches them.
+
+**11.3. Mandatory checkpoint at the end of every milestone**
+
+The LAST task of the LAST feature folder of a milestone is always a **checkpoint task** —
+`<YYYYMMddHHmm>_revalidate-prd-and-plan-next.md` (or a name that plainly says so). It changes
+documents and plans, not features, and it MUST:
+
+1. **Verify the PRD against the implementation.** Walk the PRD sections this milestone touched and
+   confirm each statement still holds: versions, architecture decisions, integrations, constraints.
+2. **Verify the specs against the implementation.** Compare every table and signature of the relevant
+   spec files with what the code actually does (registered policies, error codes, limits, options,
+   schema).
+3. **Update whatever drifted** — in the same change. Wrong statements are corrected, not annotated;
+   open questions that the implementation answered are closed with their consequence recorded; new
+   unknowns discovered while building become new open questions.
+4. **Record as-built** in `ai-flow/docs/specs/<feature>/IMPLEMENTED.md`, update memories and the
+   knowledge table, append to the changelog.
+5. **Update `MILESTONES.md`**: mark this milestone `done` with its actual outcome, and refine the
+   next milestone's feature list now that reality is known.
+6. **Cut the tasks of the next milestone** — the first feature folder of the next milestone is
+   authored from the just-corrected PRD and specs, never from their pre-milestone version.
+
+Its `## Test Cases` section states plainly that the task changes no production code, and carries the
+checks that still apply: the build and the existing test suite stay green, and the documents match
+what the code registers (error map, policies, limits) with no divergence left.
+
+**11.4. Why this is a task and not a note**
+
+Task authoring reads spec text. If specs keep describing a contour, version or contract that the
+milestone changed, every subsequent task inherits the error and an executing agent implements it
+literally. One checkpoint task per milestone is cheaper than re-cutting a dozen.
+
 ## Output Format
+
+**Part 0 — `ai-flow/docs/tasks/MILESTONES.md`** (§11): created when decomposing a PRD for the first
+time, updated on every later run — milestones, their goals, coverage, exit criteria and status. State
+which milestone the features being cut now belong to.
 
 **Part 1 — Dependency graph (ASCII)** of the tasks in this feature (a DAG).
 
@@ -358,3 +432,5 @@ intermediate steps leave the codebase non-compiling.
 (drop the `#NN` from the title — use a plain `# <Task title>`).
 Each task file MUST carry a filled-in `## Test Cases` section per §6 — unit-level, dependencies
 mocked, hot paths and corner cases covered. A task file without it is not a valid output.
+The last feature folder of a milestone MUST end with the checkpoint task from §11.3 — a milestone
+without its checkpoint is not a valid output either.

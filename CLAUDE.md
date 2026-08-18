@@ -18,6 +18,12 @@ Load Serena memories and docs **on demand** — do not preload everything into c
 - **Task artifacts ALWAYS go into `ai-flow/docs/tasks/`**, grouped by feature/fix:
   `ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE>/` with a `README.md` (DesignReview), task files
   `<YYYYMMddHHmm_TASK>.md`, and a `done/` subfolder (see `ai-flow/docs/tasks/README.md`).
+- **A PRD is cut into key implementation milestones before it is cut into tasks.** The milestones
+  live in `ai-flow/docs/tasks/MILESTONES.md` (goal, covered requirements/specs, member features,
+  exit criteria, status). The last task of a milestone's last feature is always a checkpoint task:
+  verify PRD **and** specs against the actual implementation, fix whatever drifted, record as-built,
+  update `MILESTONES.md`, and only then cut the next milestone's tasks — never from a stale spec.
+  Rules: `ai-flow/docs/prompts/PROMT_TASKS.md` §11.
 - Automated execution: `python ai-flow/run_tasks.py` (config `ai-flow/agents.yml`). On success a task
   file is MOVED into its feature's `done/` subfolder; once ALL tasks of a feature are done, the whole
   feature folder is MOVED into the global archive `ai-flow/docs/tasks/done/<feature>/`.
