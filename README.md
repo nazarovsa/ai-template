@@ -6,7 +6,8 @@
 > **идея → PRD → спецификация → задачи → автоматическое выполнение агентом → самоподдержка знаний и документации**
 
 Вся инфраструктура лежит в одном каталоге — `ai-flow/`. В корне проекта остаётся только то, что
-ИИ-инструменты находят автоматически: `README.md`, `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.serena/`.
+ИИ-инструменты находят автоматически: `README.md`, `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`,
+`.serena/`.
 
 > Этот README — **учебник**. Если вы впервые видите ИИ-агентов, читайте подряд: разделы
 > [«Зачем это нужно»](#зачем-это-нужно), [«Словарь»](#словарь-основные-понятия) и
@@ -353,8 +354,9 @@ python ai-flow/run_tasks.py --feature user-login
 ```
 
 **Как читать эту структуру.** Всё, что нужно инструментам «из коробки» (правила и авто-обнаружение),
-живёт в корне и в `.claude/`/`.serena/`. Всё, что относится к самому процессу (скрипты, промты, задачи,
-спеки, журнал) — под `ai-flow/`. Такое разделение позволяет [не тащить флоу в git](#не-коммитить-флоу-в-git),
+живёт в корне и в `.claude/`/`.codex/`/`.serena/`. Всё, что относится к самому процессу (скрипты,
+промты, задачи, спеки, журнал) — под `ai-flow/`. Такое разделение позволяет
+[не тащить флоу в git](#не-коммитить-флоу-в-git),
 если он вам нужен только локально.
 
 ### Шаблоны реализации — `core_templates/`
@@ -751,8 +753,10 @@ python ai-flow/init.py setup-mcp --tool claude    # алиас: setup-serena; и
 
 Команда убеждается, что `.mcp.json` на месте, а `uvx` и бинарь `codebase-memory-mcp` доступны на PATH
 (иначе подсказывает, как поставить). Ставить серверы вручную для Claude Code не нужно — их поднимает
-`.mcp.json`. Для Codex — секция `[mcp_servers.serena]` в `~/.codex/config.toml`; для Cursor —
-`.cursor/mcp.json` (обе `init.py setup-mcp` создаёт сам, эти инструменты `.mcp.json` не читают).
+`.mcp.json`. Для Codex — секции `[mcp_servers.serena]` и `[mcp_servers.codebase-memory-mcp]` в
+проектном `.codex/config.toml`; для Cursor — `.cursor/mcp.json` (`init.py setup-mcp` создаёт эти
+настройки сам, поскольку инструменты не читают Claude-специфичный `.mcp.json`). После настройки Codex
+нужно начать новую сессию, чтобы MCP-инструменты появились в её наборе инструментов.
 Документация: <https://github.com/oraios/serena>, <https://github.com/DeusData/codebase-memory-mcp>.
 
 ---
@@ -820,13 +824,13 @@ claude/zcode).
 
 ## Не коммитить флоу в git
 
-Если не нужно тащить флоу в репозиторий, исключите весь набор (`ai-flow/`, `.claude/`, `.serena/`,
-`CLAUDE.md`, `AGENTS.md`) через **глобальный gitignore** (личный, на все репозитории) — тогда
+Если не нужно тащить флоу в репозиторий, исключите весь набор (`ai-flow/`, `.claude/`, `.codex/`,
+`.serena/`, `CLAUDE.md`, `AGENTS.md`) через **глобальный gitignore** (личный, на все репозитории) — тогда
 репозиторный `.gitignore` не трогается:
 
 ```bash
 git config --global core.excludesFile ~/.gitignore_global
-printf '%s\n' 'ai-flow/' '.claude/' '.serena/' 'CLAUDE.md' 'AGENTS.md' 'BUILD_PROMPT.md' >> ~/.gitignore_global
+printf '%s\n' 'ai-flow/' '.claude/' '.codex/' '.serena/' 'CLAUDE.md' 'AGENTS.md' 'BUILD_PROMPT.md' >> ~/.gitignore_global
 ```
 
 Для одного репозитория без коммита правила — те же строки в `.git/info/exclude`. Помните: `.gitignore`

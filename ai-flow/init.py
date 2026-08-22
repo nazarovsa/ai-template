@@ -6,7 +6,7 @@ Deploys the flow into a new or existing repository, adapts the Claude-Code-speci
 (subagents / skills) to another tool, and configures the Serena MCP server for that tool.
 
 Layout: everything except the root-anchored files lives under `ai-flow/`. The root keeps only
-CLAUDE.md, AGENTS.md, .claude/ and .serena/ (tools auto-discover these there).
+CLAUDE.md, AGENTS.md, .claude/, .codex/ and .serena/ (tools auto-discover these there).
 
 Usage:
     python ai-flow/init.py init [--target DIR] [--tool TOOL] [--lang LANG] [--comm-lang LANG] [--force] [--no-serena]
@@ -44,6 +44,7 @@ MANIFEST = [
     "AGENTS.md",
     ".gitignore",
     ".mcp.json",
+    ".codex/config.toml",
     "ai-flow/run_tasks.py",
     "ai-flow/init.py",
     "ai-flow/agents.yml",
@@ -275,6 +276,11 @@ def _uvx_args(context: str, target: Path) -> list[str]:
             "--context", context, "--project", str(target)]
 
 
+def _serena_shell_command(context: str) -> str:
+    return (f'uvx --from {SERENA_REPO} serena start-mcp-server '
+            f'--context {context} --project "$PWD"')
+
+
 def setup_mcp(target: Path, tool: str) -> None:
     if shutil.which("uvx") is None:
         info("uvx not found — install `uv` (https://astral.sh/uv), then re-run setup-mcp.")
@@ -296,17 +302,32 @@ def setup_mcp(target: Path, tool: str) -> None:
              "(merged by init).")
 
     elif tool == "codex":
-        cfg = Path.home() / ".codex" / "config.toml"
+        cfg = target / ".codex" / "config.toml"
         cfg.parent.mkdir(parents=True, exist_ok=True)
         text = cfg.read_text(encoding="utf-8") if cfg.exists() else ""
+        blocks = []
         if "[mcp_servers.serena]" in text:
-            info("Serena already present in ~/.codex/config.toml")
+            info("Serena already present in .codex/config.toml")
         else:
-            args = _uvx_args("codex", target)
-            arg_list = ", ".join(json.dumps(a) for a in args)
-            block = f'\n[mcp_servers.serena]\ncommand = "uvx"\nargs = [{arg_list}]\n'
-            cfg.write_text(text + block, encoding="utf-8")
-            info(f"added Serena MCP to {cfg}")
+            blocks.append(
+                '[mcp_servers.serena]\ncommand = "sh"\n'
+                f'args = ["-c", {json.dumps(_serena_shell_command("codex"))}]\n')
+            info(f"adding Serena MCP to {cfg}")
+
+        graph_header = f"[mcp_servers.{GRAPH_BIN}]"
+        if graph_header in text:
+            info(f"{GRAPH_BIN} already present in .codex/config.toml")
+        else:
+            blocks.append(
+                f'{graph_header}\ncommand = {json.dumps(GRAPH_BIN)}\n')
+            info(f"adding {GRAPH_BIN} MCP to {cfg}")
+
+        if blocks:
+            separator = "" if not text or text.endswith("\n\n") else "\n"
+            cfg.write_text(text + separator + "\n".join(blocks), encoding="utf-8")
+            info(f"updated Codex MCP configuration: {cfg}")
+        if shutil.which(GRAPH_BIN) is None:
+            info(f"{GRAPH_BIN} not found on PATH — install it so the code graph is available.")
 
     elif tool == "cursor":
         mcp = target / ".cursor" / "mcp.json"

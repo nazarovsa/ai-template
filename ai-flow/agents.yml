@@ -27,7 +27,7 @@ agents:
   # NOTE: verify flags against your installed `codex exec --help`
   codex:
     command: "codex exec -m {model} --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -"
-    model: gpt-5-codex
+    model: gpt-5.6-sol
 
   # zcode / Z.ai GLM — headless mode
   # NOTE: verify flags against `zcode --help`; for the Claude-compatible proxy variant use env below

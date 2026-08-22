@@ -8,7 +8,7 @@ Load Serena memories and docs **on demand** — do not preload everything into c
 ## Workflow
 
 - Flow infrastructure lives under `ai-flow/`. The repo root keeps only `CLAUDE.md`, `AGENTS.md`,
-  `.claude/`, `.serena/`, `.github/`.
+  `.claude/`, `.codex/`, `.serena/`, `.github/`.
 - Planning prompts live in `ai-flow/docs/prompts/` (`PROMT_PRD`, `PROMT_SPEC`, `PROMT_TASKS`, `PROMT_AGENT`, `PROMT_SERENA`, `PROMT_CI`).
   A from-scratch project starts with `PROMT_PRD` (`/new-prd`) — an interview that produces the project
   PRD at `ai-flow/docs/specs/PRD.md`, which then feeds `PROMT_SPEC`.
@@ -85,9 +85,11 @@ repository follows it:
 The committed `.mcp.json` wires two MCP servers and `.claude/settings.json` trusts both via
 `enabledMcpjsonServers`: **serena** (symbol search, memories) and **codebase-memory-mcp** — a code
 graph for symbol/call/usage/architecture queries (`search_code`, `query_graph`, `trace_path`,
-`get_architecture`). Use it to navigate unfamiliar code; it complements Serena, it does not replace
-memories as the knowledge store. Index a repo with `index_repository` (project name = repo folder
-name). It degrades gracefully: if a server is down, fall back to Serena + reading files.
+`get_architecture`). Codex does not read `.mcp.json`; `python ai-flow/init.py setup-mcp --tool codex`
+registers both servers in the project-level `.codex/config.toml`. Use the graph to navigate
+unfamiliar code; it complements Serena, it does not replace memories as the knowledge store. Index a
+repo with `index_repository` (project name = repo folder name). It degrades gracefully: if a server
+is down, fall back to Serena + reading files.
 
 In CI, `.github/workflows/ai-flow-tasks.yml` provisions this itself — it installs `uv` and the
 `codebase-memory-mcp` binary, checks `claude mcp list` (non-fatal), and warms the graph with a fast
