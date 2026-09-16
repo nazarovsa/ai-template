@@ -29,7 +29,15 @@ SOURCE_ROOT = FLOW_DIR.parent
 
 SUPPORTED_TOOLS = ["claude", "codex", "cursor", "gemini", "zcode"]
 RUNNABLE_AGENTS = {"claude", "codex", "zcode"}  # can be default_agent in agents.yml
-SUBAGENTS = ["prd-author", "task-author", "doc-keeper"]
+SUBAGENTS = ["prd-author", "task-author", "doc-keeper", "task-runner"]
+# skill -> subagent whose role body is inlined into the generated ZCode skill
+# (ZCode does not scan .claude/agents/, so thin routing skills would break there).
+ZCODE_SKILL_AGENTS = {
+    "new-prd": "prd-author",
+    "new-task": "task-author",
+    "run-tasks": "task-runner",
+    "sync-docs": "doc-keeper",
+}
 SERENA_REPO = "git+https://github.com/oraios/serena"
 HOOK_COMMAND = "python ai-flow/hooks/check_memory_sync.py"
 # MCP servers declared in the committed .mcp.json — Claude Code must trust them non-interactively
@@ -62,9 +70,12 @@ MANIFEST = [
     ".claude/agents/prd-author.md",
     ".claude/agents/task-author.md",
     ".claude/agents/doc-keeper.md",
+    ".claude/agents/task-runner.md",
     ".claude/skills/new-prd/SKILL.md",
     ".claude/skills/new-task/SKILL.md",
+    ".claude/skills/run-tasks/SKILL.md",
     ".claude/skills/sync-docs/SKILL.md",
+    ".zcode/config.json",
     ".serena/project.yml",
     ".serena/memories/suggested-commands.md",
     ".serena/memories/task-completion.md",
@@ -162,11 +173,64 @@ def merge_gitignore(target: Path) -> None:
     info("updated .gitignore")
 
 
+def merge_zcode_config(target: Path) -> None:
+    """Merge workspace MCP servers and the SessionStart memory-sync hook into
+    <target>/.zcode/config.json — ZCode's project config. ZCode does not read the
+    committed .mcp.json or .claude/settings.json, and configuration-file hooks are
+    disabled by default (`hooks.enabled: true` is required for them to run)."""
+    cfg_path = target / ".zcode" / "config.json"
+    data = {}
+    if cfg_path.exists():
+        try:
+            data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            info("existing .zcode/config.json is not valid JSON — merge mcp.servers/hooks manually")
+            return
+    changed = False
+
+    # Mirror the committed .mcp.json servers (Serena + code graph), preserving entries.
+    servers = data.setdefault("mcp", {}).setdefault("servers", {})
+    mcpjson = target / ".mcp.json"
+    if mcpjson.exists():
+        try:
+            declared = json.loads(mcpjson.read_text(encoding="utf-8")).get("mcpServers") or {}
+        except json.JSONDecodeError:
+            declared = {}
+        for name, server in declared.items():
+            if name not in servers:
+                servers[name] = server
+                changed = True
+
+    hooks = data.setdefault("hooks", {})
+    if hooks.get("enabled") is not True:
+        hooks["enabled"] = True
+        changed = True
+    session = hooks.setdefault("SessionStart", [])
+    already = any(
+        h.get("command") == HOOK_COMMAND
+        for group in session if isinstance(group, dict)
+        for h in group.get("hooks", []) if isinstance(h, dict)
+    )
+    if not already:
+        session.append({"hooks": [{"type": "command", "command": HOOK_COMMAND}]})
+        changed = True
+
+    if not changed:
+        info("mcp.servers + SessionStart hook already present in .zcode/config.json")
+        return
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    info("merged mcp.servers + enabled SessionStart hook into .zcode/config.json")
+
+
 def merge_settings(target: Path, tool: str) -> None:
     """Merge the SessionStart memory-sync hook AND the enabledMcpjsonServers trust list into
     <target>/.claude/settings.json. Without the latter the .mcp.json servers never start under
-    `--dangerously-skip-permissions`."""
-    if tool not in ("claude", "zcode"):
+    `--dangerously-skip-permissions`. ZCode takes its own config instead (see merge_zcode_config)."""
+    if tool == "zcode":
+        merge_zcode_config(target)
+        return
+    if tool != "claude":
         return
     settings = target / ".claude" / "settings.json"
     settings.parent.mkdir(parents=True, exist_ok=True)
@@ -229,9 +293,51 @@ def _redirect_text() -> str:
             "Serena memory knowledge base. Do not duplicate rules here.\n")
 
 
+def _raw_frontmatter(target: Path, skill: str) -> str:
+    """The skill's frontmatter block (`---\\nname/description\\n---`), copied verbatim."""
+    path = target / ".claude" / "skills" / skill / "SKILL.md"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) == 3:
+            return f"---{parts[1]}---"
+    return f"---\nname: {skill}\n---"
+
+
+def generate_zcode_skills(target: Path) -> None:
+    """Write self-contained ZCode skills to .agents/skills/<name>/SKILL.md.
+
+    ZCode discovers workspace skills in .agents/skills/ (or .zcode/skills/) but does not load
+    .claude/agents/ subagents, so the thin routing skills would delegate to subagents it cannot
+    see. Each generated skill keeps the Claude skill's frontmatter and inlines the full role
+    body of the matching subagent instead of the delegation steps."""
+    written = []
+    for skill, agent in ZCODE_SKILL_AGENTS.items():
+        _, body = _agent_body(target, agent)
+        if not body.strip():
+            info(f"skip {skill}: .claude/agents/{agent}.md is missing or empty")
+            continue
+        lead = (
+            f"# {skill}\n\n"
+            f"Execute the `{agent}` role yourself, in this conversation. ZCode does not load\n"
+            f"`.claude/agents/` subagents, so the full role instructions are inlined below —\n"
+            f"there is no delegation step.\n"
+        )
+        text = f"{_raw_frontmatter(target, skill)}\n\n{lead}\n---\n\n{body}"
+        out = target / ".agents" / "skills" / skill / "SKILL.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        written.append(skill)
+    info(f"wrote .agents/skills/*.md self-contained ({', '.join(written) or 'nothing'})")
+
+
 def generate_adapters(target: Path, tool: str) -> None:
-    if tool in ("claude", "zcode"):
+    if tool == "claude":
         info("native .claude/agents + .claude/skills reused (no adapter needed)")
+        return
+
+    if tool == "zcode":
+        generate_zcode_skills(target)
         return
 
     if tool == "codex":
@@ -285,7 +391,7 @@ def setup_mcp(target: Path, tool: str) -> None:
     if shutil.which("uvx") is None:
         info("uvx not found — install `uv` (https://astral.sh/uv), then re-run setup-mcp.")
 
-    if tool in ("claude", "zcode"):
+    if tool == "claude":
         # The committed project-level .mcp.json is the single source of truth (local + CI): it
         # declares both Serena and codebase-memory-mcp. Do NOT `claude mcp add serena` — that
         # registers a second copy at user scope and double-registers the server. Just verify the
@@ -300,6 +406,15 @@ def setup_mcp(target: Path, tool: str) -> None:
                  "Actions') so the code graph is available.")
         info("Claude Code trusts both servers via .claude/settings.json → enabledMcpjsonServers "
              "(merged by init).")
+
+    elif tool == "zcode":
+        # ZCode ignores .mcp.json; it reads workspace MCP from .zcode/config.json
+        # (workspace-scoped servers are trusted and auto-connected).
+        merge_zcode_config(target)
+        if shutil.which("uvx") is None:
+            info("uvx not found — Serena will not start; install `uv` (https://astral.sh/uv).")
+        if shutil.which(GRAPH_BIN) is None:
+            info(f"{GRAPH_BIN} not found on PATH — install it so the code graph is available.")
 
     elif tool == "codex":
         cfg = target / ".codex" / "config.toml"
@@ -400,7 +515,11 @@ def cmd_setup_mcp(args) -> None:
 def cmd_list_tools(_args) -> None:
     print("Supported tools:")
     for t in SUPPORTED_TOOLS:
-        native = " (native subagents/skills)" if t in ("claude", "zcode") else ""
+        native = ""
+        if t == "claude":
+            native = " (native subagents/skills)"
+        elif t == "zcode":
+            native = " (native skills; generated .agents/skills + .zcode/config.json)"
         runnable = " [run_tasks agent]" if t in RUNNABLE_AGENTS else ""
         print(f"  - {t}{native}{runnable}")
 

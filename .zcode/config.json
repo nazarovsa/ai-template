@@ -1,0 +1,30 @@
+{
+  "mcp": {
+    "servers": {
+      "serena": {
+        "command": "sh",
+        "args": [
+          "-c",
+          "uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project \"$PWD\""
+        ]
+      },
+      "codebase-memory-mcp": {
+        "command": "codebase-memory-mcp",
+        "args": []
+      }
+    }
+  },
+  "hooks": {
+    "enabled": true,
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ai-flow/hooks/check_memory_sync.py"
+          }
+        ]
+      }
+    ]
+  }
+}

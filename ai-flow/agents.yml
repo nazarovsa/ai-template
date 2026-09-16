@@ -29,11 +29,15 @@ agents:
     command: "codex exec -m {model} --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -"
     model: gpt-5.6-sol
 
-  # zcode / Z.ai GLM — headless mode
-  # NOTE: verify flags against `zcode --help`; for the Claude-compatible proxy variant use env below
+  # zcode / Z.ai GLM — headless mode (verified against zcode CLI 0.16.5).
+  # The CLI has NO --model flag and does not read the prompt from stdin: {prompt_file} is
+  # substituted by run_tasks.py with the temp prompt file and delivered via --attach.
+  # Model + auth live in ~/.zcode/cli/config.json ("provider" + "model.main", e.g. zai/GLM-5.3);
+  # in CI they can come from env instead: ZCODE_MODEL ("zai/glm-5.1"), ZCODE_API_KEY,
+  # ZCODE_BASE_URL. --mode yolo is the headless default but is pinned explicitly.
   zcode:
-    command: "zcode -p -m {model}"
-    model: glm-4.6
+    command: 'zcode --mode yolo --attach "{prompt_file}" --prompt "Implement the task described in the attached prompt file."'
     # env:
-    #   ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic"
-    #   ANTHROPIC_AUTH_TOKEN: "${ZAI_API_KEY}"
+    #   ZCODE_MODEL: "zai/glm-5.1"
+    #   ZCODE_API_KEY: "${ZAI_API_KEY}"
+    #   ZCODE_BASE_URL: "https://api.z.ai/api/anthropic"
