@@ -6,6 +6,27 @@ and are indexed in the CLAUDE.md "Project knowledge" table.
 
 ---
 
+## [2026-09-17] — Один инструмент из коробки: Claude Code + промт адаптации PROMT_TOOL
+
+- Удалены готовые адаптеры под другие инструменты: каталоги `.codex/` (config.toml, hooks.json,
+  4 агента `.toml`), `.zcode/config.json` и сгенерированные zcode-скиллы `.agents/skills/*`.
+- `ai-flow/init.py`: убраны `--tool`, подкоманды `adapt` и `list-tools`, генераторы адаптеров
+  (`.codex/prompts`, `.cursor/rules`, `.gemini/prompts`, `.agents/skills`) и `merge_zcode_config`.
+  Установщик настраивает только Claude Code; MANIFEST потерял `.codex/config.toml` и
+  `.zcode/config.json`, получил `PROMT_TOOL.md`.
+- `ai-flow/agents.yml`: остался единственный агент `claude`; вместо записей codex/zcode — комментарий
+  с формой записи, которую добавляет `PROMT_TOOL`. Механика `{prompt_file}` в `run_tasks.py`
+  сохранена (нужна CLI, не читающим stdin).
+- Добавлен `ai-flow/docs/prompts/PROMT_TOOL.md` — промт, который запускают ИЗ-ПОД другого агентского
+  CLI: он проверяет реальные возможности инструмента (`--help`/доки), перекладывает 4 роли, 4 точки
+  входа, SessionStart-хук и MCP на его механизмы, добавляет запись исполнителя в `agents.yml` и
+  требует проверок (список скиллов, срабатывание хука, `--dry-run`, smoke-тест команды). Инварианты:
+  `CLAUDE.md` — единственный источник правил, `.claude/` не удаляется, `run_tasks.py` не правится,
+  тонкий роутер запрещён там, где инструмент не видит субагентов.
+- Документация: README (новый раздел «Другой инструмент, не Claude Code» вместо «Поддерживаемые
+  инструменты», команды `init.py` без `--tool`, 7 промтов), `CLAUDE.md`, `AGENTS.md`, память
+  `suggested-commands`, комментарии в CI-workflow и инвариант 11 в `PROMT_CI.md`.
+
 ## 2026-08-22 — Project-level Codex MCP configuration
 
 - Added `.codex/config.toml` to the installer manifest so initialized repositories support Codex

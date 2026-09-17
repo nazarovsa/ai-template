@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-ai-flow installer / adapter.
+ai-flow installer.
 
-Deploys the flow into a new or existing repository, adapts the Claude-Code-specific pieces
-(subagents / skills) to another tool, and configures the Serena MCP server for that tool.
+Deploys the flow into a new or existing repository and configures the MCP servers
+(Serena + codebase-memory-mcp code graph) for Claude Code.
+
+Claude Code is the only tool this installer configures. To run the flow under a different
+agentic CLI (Codex, Cursor, Gemini, zcode, …), install it here first and then hand that tool
+`ai-flow/docs/prompts/PROMT_TOOL.md` — it adapts the subagents, skills, hooks, MCP wiring and
+the orchestrator command to that tool's own mechanisms.
 
 Layout: everything except the root-anchored files lives under `ai-flow/`. The root keeps only
-CLAUDE.md, AGENTS.md, .claude/, .codex/ and .serena/ (tools auto-discover these there).
+CLAUDE.md, AGENTS.md, .claude/ and .serena/ (tools auto-discover these there).
 
 Usage:
-    python ai-flow/init.py init [--target DIR] [--tool TOOL] [--lang LANG] [--comm-lang LANG] [--force] [--no-serena]
-    python ai-flow/init.py adapt --tool TOOL [--target DIR]
-    python ai-flow/init.py setup-mcp --tool TOOL [--target DIR]   (alias: setup-serena)
-    python ai-flow/init.py list-tools
+    python ai-flow/init.py init [--target DIR] [--lang LANG] [--comm-lang LANG] [--force] [--no-serena]
+    python ai-flow/init.py setup-mcp [--target DIR]   (alias: setup-serena)
 """
 
 import argparse
@@ -27,17 +30,6 @@ if hasattr(sys.stdout, "reconfigure"):
 FLOW_DIR = Path(__file__).resolve().parent
 SOURCE_ROOT = FLOW_DIR.parent
 
-SUPPORTED_TOOLS = ["claude", "codex", "cursor", "gemini", "zcode"]
-RUNNABLE_AGENTS = {"claude", "codex", "zcode"}  # can be default_agent in agents.yml
-SUBAGENTS = ["prd-author", "task-author", "doc-keeper", "task-runner"]
-# skill -> subagent whose role body is inlined into the generated ZCode skill
-# (ZCode does not scan .claude/agents/, so thin routing skills would break there).
-ZCODE_SKILL_AGENTS = {
-    "new-prd": "prd-author",
-    "new-task": "task-author",
-    "run-tasks": "task-runner",
-    "sync-docs": "doc-keeper",
-}
 SERENA_REPO = "git+https://github.com/oraios/serena"
 HOOK_COMMAND = "python ai-flow/hooks/check_memory_sync.py"
 # MCP servers declared in the committed .mcp.json — Claude Code must trust them non-interactively
@@ -52,7 +44,6 @@ MANIFEST = [
     "AGENTS.md",
     ".gitignore",
     ".mcp.json",
-    ".codex/config.toml",
     "ai-flow/run_tasks.py",
     "ai-flow/init.py",
     "ai-flow/agents.yml",
@@ -62,6 +53,7 @@ MANIFEST = [
     "ai-flow/docs/prompts/PROMT_AGENT.md",
     "ai-flow/docs/prompts/PROMT_SERENA.md",
     "ai-flow/docs/prompts/PROMT_CI.md",
+    "ai-flow/docs/prompts/PROMT_TOOL.md",
     "ai-flow/docs/specs/README.md",
     "ai-flow/docs/tasks/README.md",
     "ai-flow/docs/CHANGELOG.md",
@@ -75,7 +67,6 @@ MANIFEST = [
     ".claude/skills/new-task/SKILL.md",
     ".claude/skills/run-tasks/SKILL.md",
     ".claude/skills/sync-docs/SKILL.md",
-    ".zcode/config.json",
     ".serena/project.yml",
     ".serena/memories/suggested-commands.md",
     ".serena/memories/task-completion.md",
@@ -152,13 +143,6 @@ def apply_comm_lang(target: Path, comm_lang: str) -> None:
     info(f"communication language: {name}")
 
 
-def apply_tool_default(target: Path, tool: str) -> None:
-    if tool in RUNNABLE_AGENTS:
-        _replace_line(target / "ai-flow" / "agents.yml",
-                      "default_agent:", f"default_agent: {tool}")
-        info(f"default_agent: {tool}")
-
-
 def merge_gitignore(target: Path) -> None:
     gi = target / ".gitignore"
     marker = "# --- ai-flow ---"
@@ -173,65 +157,10 @@ def merge_gitignore(target: Path) -> None:
     info("updated .gitignore")
 
 
-def merge_zcode_config(target: Path) -> None:
-    """Merge workspace MCP servers and the SessionStart memory-sync hook into
-    <target>/.zcode/config.json — ZCode's project config. ZCode does not read the
-    committed .mcp.json or .claude/settings.json, and configuration-file hooks are
-    disabled by default (`hooks.enabled: true` is required for them to run)."""
-    cfg_path = target / ".zcode" / "config.json"
-    data = {}
-    if cfg_path.exists():
-        try:
-            data = json.loads(cfg_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            info("existing .zcode/config.json is not valid JSON — merge mcp.servers/hooks manually")
-            return
-    changed = False
-
-    # Mirror the committed .mcp.json servers (Serena + code graph), preserving entries.
-    servers = data.setdefault("mcp", {}).setdefault("servers", {})
-    mcpjson = target / ".mcp.json"
-    if mcpjson.exists():
-        try:
-            declared = json.loads(mcpjson.read_text(encoding="utf-8")).get("mcpServers") or {}
-        except json.JSONDecodeError:
-            declared = {}
-        for name, server in declared.items():
-            if name not in servers:
-                servers[name] = server
-                changed = True
-
-    hooks = data.setdefault("hooks", {})
-    if hooks.get("enabled") is not True:
-        hooks["enabled"] = True
-        changed = True
-    session = hooks.setdefault("SessionStart", [])
-    already = any(
-        h.get("command") == HOOK_COMMAND
-        for group in session if isinstance(group, dict)
-        for h in group.get("hooks", []) if isinstance(h, dict)
-    )
-    if not already:
-        session.append({"hooks": [{"type": "command", "command": HOOK_COMMAND}]})
-        changed = True
-
-    if not changed:
-        info("mcp.servers + SessionStart hook already present in .zcode/config.json")
-        return
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    info("merged mcp.servers + enabled SessionStart hook into .zcode/config.json")
-
-
-def merge_settings(target: Path, tool: str) -> None:
+def merge_settings(target: Path) -> None:
     """Merge the SessionStart memory-sync hook AND the enabledMcpjsonServers trust list into
     <target>/.claude/settings.json. Without the latter the .mcp.json servers never start under
-    `--dangerously-skip-permissions`. ZCode takes its own config instead (see merge_zcode_config)."""
-    if tool == "zcode":
-        merge_zcode_config(target)
-        return
-    if tool != "claude":
-        return
+    `--dangerously-skip-permissions`."""
     settings = target / ".claude" / "settings.json"
     settings.parent.mkdir(parents=True, exist_ok=True)
     data = {}
@@ -269,199 +198,29 @@ def merge_settings(target: Path, tool: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# tool adapters (subagents/skills -> native mechanism)
-# ---------------------------------------------------------------------------
-
-def _agent_body(target: Path, name: str) -> tuple[str, str]:
-    """Return (description, body-without-frontmatter) for a subagent."""
-    path = target / ".claude" / "agents" / f"{name}.md"
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    desc, body = name, text
-    if text.startswith("---"):
-        parts = text.split("---", 2)
-        if len(parts) == 3:
-            fm, body = parts[1], parts[2].lstrip()
-            for ln in fm.splitlines():
-                if ln.strip().startswith("description:"):
-                    desc = ln.split(":", 1)[1].strip().strip(">").strip() or name
-    return desc, body
-
-
-def _redirect_text() -> str:
-    return ("This project is configured through **CLAUDE.md** (single source of truth).\n"
-            "Read and follow ./CLAUDE.md for rules, the task workflow (ai-flow/docs/), and the\n"
-            "Serena memory knowledge base. Do not duplicate rules here.\n")
-
-
-def _raw_frontmatter(target: Path, skill: str) -> str:
-    """The skill's frontmatter block (`---\\nname/description\\n---`), copied verbatim."""
-    path = target / ".claude" / "skills" / skill / "SKILL.md"
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    if text.startswith("---"):
-        parts = text.split("---", 2)
-        if len(parts) == 3:
-            return f"---{parts[1]}---"
-    return f"---\nname: {skill}\n---"
-
-
-def generate_zcode_skills(target: Path) -> None:
-    """Write self-contained ZCode skills to .agents/skills/<name>/SKILL.md.
-
-    ZCode discovers workspace skills in .agents/skills/ (or .zcode/skills/) but does not load
-    .claude/agents/ subagents, so the thin routing skills would delegate to subagents it cannot
-    see. Each generated skill keeps the Claude skill's frontmatter and inlines the full role
-    body of the matching subagent instead of the delegation steps."""
-    written = []
-    for skill, agent in ZCODE_SKILL_AGENTS.items():
-        _, body = _agent_body(target, agent)
-        if not body.strip():
-            info(f"skip {skill}: .claude/agents/{agent}.md is missing or empty")
-            continue
-        lead = (
-            f"# {skill}\n\n"
-            f"Execute the `{agent}` role yourself, in this conversation. ZCode does not load\n"
-            f"`.claude/agents/` subagents, so the full role instructions are inlined below —\n"
-            f"there is no delegation step.\n"
-        )
-        text = f"{_raw_frontmatter(target, skill)}\n\n{lead}\n---\n\n{body}"
-        out = target / ".agents" / "skills" / skill / "SKILL.md"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(text, encoding="utf-8")
-        written.append(skill)
-    info(f"wrote .agents/skills/*.md self-contained ({', '.join(written) or 'nothing'})")
-
-
-def generate_adapters(target: Path, tool: str) -> None:
-    if tool == "claude":
-        info("native .claude/agents + .claude/skills reused (no adapter needed)")
-        return
-
-    if tool == "zcode":
-        generate_zcode_skills(target)
-        return
-
-    if tool == "codex":
-        (target / "AGENTS.md").exists() or (target / "AGENTS.md").write_text(
-            "# AGENTS.md\n\n" + _redirect_text(), encoding="utf-8")
-        d = target / ".codex" / "prompts"
-        d.mkdir(parents=True, exist_ok=True)
-        for name in SUBAGENTS:
-            _, body = _agent_body(target, name)
-            (d / f"{name}.md").write_text(body, encoding="utf-8")
-        info(f"wrote .codex/prompts/*.md ({', '.join(SUBAGENTS)}) + AGENTS.md")
-
-    elif tool == "cursor":
-        d = target / ".cursor" / "rules"
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "000-claude.mdc").write_text(
-            "---\ndescription: Project rules\nalwaysApply: true\n---\n\n" + _redirect_text(),
-            encoding="utf-8")
-        for name in SUBAGENTS:
-            desc, body = _agent_body(target, name)
-            (d / f"{name}.mdc").write_text(
-                f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n{body}",
-                encoding="utf-8")
-        info("wrote .cursor/rules/*.mdc")
-
-    elif tool == "gemini":
-        (target / "GEMINI.md").write_text("# GEMINI.md\n\n" + _redirect_text(), encoding="utf-8")
-        d = target / ".gemini" / "prompts"
-        d.mkdir(parents=True, exist_ok=True)
-        for name in SUBAGENTS:
-            _, body = _agent_body(target, name)
-            (d / f"{name}.md").write_text(body, encoding="utf-8")
-        info("wrote GEMINI.md + .gemini/prompts/*.md")
-
-
-# ---------------------------------------------------------------------------
 # MCP setup (Serena + codebase-memory-mcp code graph)
 # ---------------------------------------------------------------------------
 
-def _uvx_args(context: str, target: Path) -> list[str]:
-    return ["--from", SERENA_REPO, "serena", "start-mcp-server",
-            "--context", context, "--project", str(target)]
-
-
-def _serena_shell_command(context: str) -> str:
-    return (f'uvx --from {SERENA_REPO} serena start-mcp-server '
-            f'--context {context} --project "$PWD"')
-
-
-def setup_mcp(target: Path, tool: str) -> None:
+def setup_mcp(target: Path) -> None:
+    # The committed project-level .mcp.json is the single source of truth (local + CI): it declares
+    # both Serena and codebase-memory-mcp. Do NOT `claude mcp add serena` — that registers a second
+    # copy at user scope and double-registers the server. Just verify the file and the runtime
+    # dependencies, then remind about the trust list.
     if shutil.which("uvx") is None:
         info("uvx not found — install `uv` (https://astral.sh/uv), then re-run setup-mcp.")
 
-    if tool == "claude":
-        # The committed project-level .mcp.json is the single source of truth (local + CI): it
-        # declares both Serena and codebase-memory-mcp. Do NOT `claude mcp add serena` — that
-        # registers a second copy at user scope and double-registers the server. Just verify the
-        # file and the runtime dependencies, then remind about the trust list.
-        mcp = target / ".mcp.json"
-        if mcp.exists():
-            info(".mcp.json present — project-level source for serena + codebase-memory-mcp")
-        else:
-            info("WARNING: .mcp.json is missing — re-run `init` (or copy it from the template).")
-        if shutil.which(GRAPH_BIN) is None:
-            info(f"{GRAPH_BIN} not found on PATH — install it (README: 'Запуск задач в GitHub "
-                 "Actions') so the code graph is available.")
-        info("Claude Code trusts both servers via .claude/settings.json → enabledMcpjsonServers "
-             "(merged by init).")
-
-    elif tool == "zcode":
-        # ZCode ignores .mcp.json; it reads workspace MCP from .zcode/config.json
-        # (workspace-scoped servers are trusted and auto-connected).
-        merge_zcode_config(target)
-        if shutil.which("uvx") is None:
-            info("uvx not found — Serena will not start; install `uv` (https://astral.sh/uv).")
-        if shutil.which(GRAPH_BIN) is None:
-            info(f"{GRAPH_BIN} not found on PATH — install it so the code graph is available.")
-
-    elif tool == "codex":
-        cfg = target / ".codex" / "config.toml"
-        cfg.parent.mkdir(parents=True, exist_ok=True)
-        text = cfg.read_text(encoding="utf-8") if cfg.exists() else ""
-        blocks = []
-        if "[mcp_servers.serena]" in text:
-            info("Serena already present in .codex/config.toml")
-        else:
-            blocks.append(
-                '[mcp_servers.serena]\ncommand = "sh"\n'
-                f'args = ["-c", {json.dumps(_serena_shell_command("codex"))}]\n')
-            info(f"adding Serena MCP to {cfg}")
-
-        graph_header = f"[mcp_servers.{GRAPH_BIN}]"
-        if graph_header in text:
-            info(f"{GRAPH_BIN} already present in .codex/config.toml")
-        else:
-            blocks.append(
-                f'{graph_header}\ncommand = {json.dumps(GRAPH_BIN)}\n')
-            info(f"adding {GRAPH_BIN} MCP to {cfg}")
-
-        if blocks:
-            separator = "" if not text or text.endswith("\n\n") else "\n"
-            cfg.write_text(text + separator + "\n".join(blocks), encoding="utf-8")
-            info(f"updated Codex MCP configuration: {cfg}")
-        if shutil.which(GRAPH_BIN) is None:
-            info(f"{GRAPH_BIN} not found on PATH — install it so the code graph is available.")
-
-    elif tool == "cursor":
-        mcp = target / ".cursor" / "mcp.json"
-        mcp.parent.mkdir(parents=True, exist_ok=True)
-        data = {}
-        if mcp.exists():
-            try:
-                data = json.loads(mcp.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                data = {}
-        data.setdefault("mcpServers", {})["serena"] = {
-            "command": "uvx", "args": _uvx_args("ide-assistant", target)}
-        mcp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        info(f"wrote {mcp}")
-
+    mcp = target / ".mcp.json"
+    if mcp.exists():
+        info(".mcp.json present — project-level source for serena + codebase-memory-mcp")
     else:
-        args = _uvx_args("ide-assistant", target)
-        info(f"add this MCP server to your tool manually:  uvx {' '.join(args)}")
-
+        info("WARNING: .mcp.json is missing — re-run `init` (or copy it from the template).")
+    if shutil.which(GRAPH_BIN) is None:
+        info(f"{GRAPH_BIN} not found on PATH — install it (README: 'Запуск задач в GitHub "
+             "Actions') so the code graph is available.")
+    info("Claude Code trusts both servers via .claude/settings.json → enabledMcpjsonServers "
+         "(merged by init).")
+    info("Another tool than Claude Code? It will not read .mcp.json — hand it "
+         "ai-flow/docs/prompts/PROMT_TOOL.md to wire the servers its own way.")
     info("Next: run ai-flow/docs/prompts/PROMT_SERENA.md (or the /sync-docs skill) to populate memory.")
 
 
@@ -470,86 +229,47 @@ def setup_mcp(target: Path, tool: str) -> None:
 # ---------------------------------------------------------------------------
 
 def cmd_init(args) -> None:
-    tool = args.tool
-    if tool not in SUPPORTED_TOOLS:
-        print(f"ERROR: unknown tool '{tool}'. Supported: {', '.join(SUPPORTED_TOOLS)}")
-        sys.exit(1)
     target = Path(args.target).resolve()
     target.mkdir(parents=True, exist_ok=True)
-    print(f"Deploying ai-flow into: {target}  (tool={tool})")
+    print(f"Deploying ai-flow into: {target}  (tool: Claude Code)")
 
     copied, skipped = copy_manifest(target, force=args.force)
     info(f"files: {copied} copied, {skipped} skipped")
     apply_lang(target, args.lang)
     apply_comm_lang(target, args.comm_lang)
-    apply_tool_default(target, tool)
     merge_gitignore(target)
-    generate_adapters(target, tool)
-    merge_settings(target, tool)
+    merge_settings(target)
     if not args.no_serena:
-        setup_mcp(target, tool)
+        setup_mcp(target)
 
     print("\nDone. Next steps:")
     print("  1) Verify .serena/project.yml language and ai-flow/agents.yml agent flags.")
     print("  2) Populate memory: run ai-flow/docs/prompts/PROMT_SERENA.md (or /sync-docs).")
     print("  3) Author tasks (/new-task) and run:  python ai-flow/run_tasks.py")
-
-
-def cmd_adapt(args) -> None:
-    if args.tool not in SUPPORTED_TOOLS:
-        print(f"ERROR: unknown tool '{args.tool}'. Supported: {', '.join(SUPPORTED_TOOLS)}")
-        sys.exit(1)
-    target = Path(args.target).resolve()
-    print(f"Adapting for tool={args.tool} in {target}")
-    apply_tool_default(target, args.tool)
-    generate_adapters(target, args.tool)
+    print("  Not using Claude Code? Open your own agentic CLI here and give it")
+    print("  ai-flow/docs/prompts/PROMT_TOOL.md to adapt the flow to that tool.")
 
 
 def cmd_setup_mcp(args) -> None:
-    if args.tool not in SUPPORTED_TOOLS:
-        print(f"ERROR: unknown tool '{args.tool}'. Supported: {', '.join(SUPPORTED_TOOLS)}")
-        sys.exit(1)
-    setup_mcp(Path(args.target).resolve(), args.tool)
-
-
-def cmd_list_tools(_args) -> None:
-    print("Supported tools:")
-    for t in SUPPORTED_TOOLS:
-        native = ""
-        if t == "claude":
-            native = " (native subagents/skills)"
-        elif t == "zcode":
-            native = " (native skills; generated .agents/skills + .zcode/config.json)"
-        runnable = " [run_tasks agent]" if t in RUNNABLE_AGENTS else ""
-        print(f"  - {t}{native}{runnable}")
+    setup_mcp(Path(args.target).resolve())
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="ai-flow installer / adapter.")
+    p = argparse.ArgumentParser(description="ai-flow installer (Claude Code).")
     sub = p.add_subparsers(dest="command", required=True)
 
     pi = sub.add_parser("init", help="deploy the flow into a new or existing repo")
     pi.add_argument("--target", default=".")
-    pi.add_argument("--tool", default="claude")
     pi.add_argument("--lang", default="python")
     pi.add_argument("--comm-lang", default="en")
     pi.add_argument("--force", action="store_true")
     pi.add_argument("--no-serena", action="store_true")
     pi.set_defaults(func=cmd_init)
 
-    pa = sub.add_parser("adapt", help="(re)generate tool adapters")
-    pa.add_argument("--tool", required=True)
-    pa.add_argument("--target", default=".")
-    pa.set_defaults(func=cmd_adapt)
-
     ps = sub.add_parser("setup-mcp", aliases=["setup-serena"],
-                        help="configure the MCP servers (Serena + code graph) for a tool")
-    ps.add_argument("--tool", required=True)
+                        help="verify the MCP servers (Serena + code graph) for Claude Code")
     ps.add_argument("--target", default=".")
     ps.set_defaults(func=cmd_setup_mcp)
-
-    pl = sub.add_parser("list-tools", help="list supported tools")
-    pl.set_defaults(func=cmd_list_tools)
 
     args = p.parse_args()
     args.func(args)

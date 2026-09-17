@@ -18,8 +18,9 @@ name: ai-flow · run tasks
 # the verify and the warm-up are best-effort: Serena memories are plain files and the agent falls back
 # to them if a server is down, so neither must fail the job.
 #
-# Only the `claude` agent is installed here. To run the codex/zcode agents from ai-flow/agents.yml,
-# add their CLI to the "Install the toolchain" step and their name to the `agent` input options.
+# Only the `claude` agent is installed here — it is the only one ai-flow/agents.yml ships. If another
+# agentic CLI was added there (see ai-flow/docs/prompts/PROMT_TOOL.md), install its binary in the
+# "Install the toolchain" step and add its name to the `agent` input options.
 
 on:
   workflow_dispatch:

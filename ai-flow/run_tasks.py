@@ -19,17 +19,16 @@ global done/ catalog (archive of fully completed features):
 Pending tasks run in filename order (timestamp prefix => chronological); explicit
 `Depends on:` lines gate ordering. `README.md` inside a feature folder is not a task.
 
-Agents are configured in `ai-flow/agents.yml` (claude / codex / zcode). The prompt
-is piped via stdin, unless the agent command contains the `{prompt_file}` placeholder —
-then the prompt is written to a temp file whose path is substituted into the command
-(quoted paths with spaces must be quoted in the command template itself). The
-completion marker (default <promise>COMPLETE</promise>) and per-task timeout come from
-the config.
+Agents are configured in `ai-flow/agents.yml`; the template ships `claude` only (another
+agentic CLI adds its own entry — see ai-flow/docs/prompts/PROMT_TOOL.md). The prompt is
+piped via stdin, unless the agent command contains the `{prompt_file}` placeholder — then
+the prompt is written to a temp file whose path is substituted into the command (paths with
+spaces must be quoted in the command template itself). The completion marker (default
+<promise>COMPLETE</promise>) and per-task timeout come from the config.
 
 Usage:
     python ai-flow/run_tasks.py                      # default agent from agents.yml
-    python ai-flow/run_tasks.py --agent codex        # override agent
-    python ai-flow/run_tasks.py --agent zcode --model glm-4.6
+    python ai-flow/run_tasks.py --agent claude --model sonnet   # override agent / model
     python ai-flow/run_tasks.py --feature user-login # only tasks in matching feature folders
     python ai-flow/run_tasks.py --task add-login     # only tasks whose name matches
     python ai-flow/run_tasks.py --dry-run            # show the plan without executing
@@ -403,7 +402,7 @@ def run_agent(task: Task, agent: dict, model: str, marker: str, timeout: int,
         tmp.close()
 
         if "{prompt_file}" in command:
-            # Prompt is delivered as a file (e.g. zcode --attach): substitute the raw path —
+            # Prompt is delivered as a file (a CLI that cannot read stdin): substitute the raw path —
             # the command template is responsible for quoting it.
             cmd = command.replace("{prompt_file}", tmp.name)
         else:

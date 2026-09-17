@@ -74,8 +74,10 @@ implement the closest equivalent and record the gap in the final report.
 10. **Manual trigger with the same parameters:** `feature`, `task`, `agent`, `model`, `dry_run`,
     `draft_pr` — mapped onto `run_tasks.py`'s flags (`--feature`, `--task`, `--agent`, `--model`,
     `--dry-run`). Empty means "not passed", not an empty string argument.
-11. **Only the `claude` agent is installed.** Offer no agent choice the pipeline cannot actually run;
-    document how to add `codex`/`zcode`.
+11. **Only the `claude` agent is installed.** It is the only entry `ai-flow/agents.yml` ships. Offer
+    no agent choice the pipeline cannot actually run; document how to add another CLI (its binary in
+    the toolchain step + its name in the agent options) for repositories that added one via
+    `ai-flow/docs/prompts/PROMT_TOOL.md`.
 12. **Never interpolate a user-supplied parameter into a shell command.** Pass it through the
     environment and quote it, so a crafted parameter cannot inject shell code.
 13. **MCP provisioning.** `.mcp.json` registers Serena (via `uvx`) and codebase-memory-mcp (the code

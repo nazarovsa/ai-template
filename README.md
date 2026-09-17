@@ -6,8 +6,15 @@
 > **идея → PRD → спецификация → задачи → автоматическое выполнение агентом → самоподдержка знаний и документации**
 
 Вся инфраструктура лежит в одном каталоге — `ai-flow/`. В корне проекта остаётся только то, что
-ИИ-инструменты находят автоматически: `README.md`, `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`,
+ИИ-инструменты находят автоматически: `README.md`, `CLAUDE.md`, `AGENTS.md`, `.claude/`,
 `.serena/`.
+
+> **Инструмент по умолчанию — [Claude Code](https://docs.claude.com/claude-code):** субагенты,
+> скиллы, хук и MCP настроены именно под него. Работаете в другом агентском CLI (Codex, Cursor,
+> Gemini CLI, zcode, …)? Ничего переписывать вручную не нужно — откройте свой инструмент в корне
+> проекта и дайте ему промт `ai-flow/docs/prompts/PROMT_TOOL.md`: он сам переложит роли, точки
+> входа, хук и MCP на механизмы вашего инструмента. Подробнее —
+> [«Другой инструмент, не Claude Code»](#другой-инструмент-не-claude-code).
 
 > Этот README — **учебник**. Если вы впервые видите ИИ-агентов, читайте подряд: разделы
 > [«Зачем это нужно»](#зачем-это-нужно), [«Словарь»](#словарь-основные-понятия) и
@@ -35,7 +42,7 @@
 - [Память проекта (Serena)](#память-проекта-serena)
 - [Хук синхронизации памяти](#хук-синхронизации-памяти)
 - [Языки](#языки)
-- [Поддерживаемые инструменты](#поддерживаемые-инструменты)
+- [Другой инструмент, не Claude Code](#другой-инструмент-не-claude-code)
 - [Не коммитить флоу в git](#не-коммитить-флоу-в-git)
 - [FAQ и решение проблем](#faq-и-решение-проблем)
 
@@ -73,7 +80,7 @@ ai-flow решает это тремя приёмами:
 
 | Термин | Что это простыми словами |
 |---|---|
-| **Агент / кодинг-CLI** | Программа-исполнитель на базе LLM, которая умеет читать и писать файлы в вашем проекте из командной строки. Например, [Claude Code](https://docs.claude.com/claude-code), OpenAI Codex CLI, zcode/GLM. Именно агент пишет код по задаче. |
+| **Агент / кодинг-CLI** | Программа-исполнитель на базе LLM, которая умеет читать и писать файлы в вашем проекте из командной строки. Флоу настроен под [Claude Code](https://docs.claude.com/claude-code); любой другой CLI (Codex, Cursor, Gemini, zcode/GLM) подключается промтом `PROMT_TOOL`. Именно агент пишет код по задаче. |
 | **Оркестратор** | Скрипт `ai-flow/run_tasks.py`. Он находит задачи, по очереди запускает агента на каждой, ждёт результат, коммитит и переносит выполненную задачу в архив. «Дирижёр» для агентов. |
 | **Спецификация (спека)** | Документ в `ai-flow/docs/specs/`, описывающий, **что** должно быть построено: интерфейсы, структуры данных, критерии приёмки. Read-only контекст для последующих шагов. |
 | **Задача (task)** | Один файл-инструкция в `ai-flow/docs/tasks/<фича>/`. Самодостаточное описание одного маленького изменения: что менять, в каких файлах, как проверить готовность. |
@@ -81,7 +88,7 @@ ai-flow решает это тремя приёмами:
 | **Память (Serena memory)** | Обычные `.md`-файлы в `.serena/memories/` с правилами и паттернами проекта («как мы пишем тесты», «где лежит доступ к БД»). Читаются агентом по мере надобности. [Serena](https://github.com/oraios/serena) — инструмент, дающий агенту удобный поиск по коду и памяти. |
 | **CLAUDE.md** | Единый свод правил проекта в корне. Главный источник истины: агенты любых инструментов обязаны его читать (`AGENTS.md` просто перенаправляет на него). |
 | **PRD** | *Product Requirements Document* — первичный документ нового проекта: видение, пользователи, пользовательские сценарии, границы функциональности, ограничения и направление архитектуры. Пишется **до** спеки, через интервью (промт `PROMT_PRD` / скилл `/new-prd`), и ложится в `ai-flow/docs/specs/PRD.md`. |
-| **Промт (prompt)** | Шаблон-инструкция в `ai-flow/docs/prompts/`. Их пять — для дискавери и написания PRD нового проекта, написания спеки, декомпозиции на задачи, инструкций агенту-исполнителю и наполнения памяти. |
+| **Промт (prompt)** | Шаблон-инструкция в `ai-flow/docs/prompts/`. Их семь — дискавери и PRD нового проекта, написание спеки, декомпозиция на задачи, инструкция агенту-исполнителю, наполнение памяти, перенос CI и адаптация флоу под другой инструмент. |
 | **Хук (hook)** | Небольшой скрипт, который среда запускает автоматически на событие (здесь — при старте сессии). Единственное настоящее «автоматически» в этом наборе. |
 | **Субагент / скилл** | Специализированные помощники Claude Code. Субагенты `prd-author` (интервьюирует и пишет PRD), `task-author` (создаёт задачи), `doc-keeper` (ведёт доки и память) и `task-runner` (запускает оркестратор по фиче); скиллы `/new-prd`, `/new-task`, `/sync-docs` и `/run-tasks` — удобные точки входа к ним. |
 | **Маркер завершения** | Строка `<promise>COMPLETE</promise>`, которую агент печатает, закончив задачу. По ней оркестратор понимает, что можно коммитить и двигаться дальше. |
@@ -122,7 +129,7 @@ ai-flow решает это тремя приёмами:
                     │   1. собирает промт: PROMT_AGENT + CLAUDE.md +
                     │      указатели на спеки/память + DesignReview +
                     │      журнал + текст задачи
-                    │   2. запускает АГЕНТА (claude / codex / zcode)
+                    │   2. запускает АГЕНТА (claude из agents.yml)
                     │   3. агент пишет код, тесты, обновляет доки/память,
                     │      печатает <promise>COMPLETE</promise>
                     │   4. оркестратор переносит задачу в done/ и коммитит
@@ -147,7 +154,7 @@ ai-flow решает это тремя приёмами:
 |---|---|---|
 | **Python 3.10+** | На нём написаны `run_tasks.py` и `init.py`. | `python --version` |
 | **PyYAML** | Оркестратор читает конфиг `agents.yml`. | `pip install pyyaml` |
-| **Кодинг-CLI агента** | Собственно исполнитель кода. По умолчанию — **Claude Code**. | Установите и авторизуйтесь: [Claude Code](https://docs.claude.com/claude-code). Альтернативы — Codex CLI, zcode. |
+| **Claude Code** | Собственно исполнитель кода — единственный инструмент, под который флоу настроен из коробки. | Установите и авторизуйтесь: [Claude Code](https://docs.claude.com/claude-code). Другой CLI — см. [«Другой инструмент»](#другой-инструмент-не-claude-code). |
 | **git** (желательно) | Для авто-коммитов после каждой задачи. Без него оркестратор просто пропустит коммит. | `git --version` |
 | **uv / uvx** (желательно) | Запускает сервер памяти [Serena](https://github.com/oraios/serena) из `.mcp.json`. | `pip install uv` или [astral.sh/uv](https://astral.sh/uv) |
 | **codebase-memory-mcp** (желательно) | Граф кода (символы, вызовы, архитектура) из `.mcp.json`. | `curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh \| bash` |
@@ -176,8 +183,8 @@ rm -rf .git && git init          # начать свою git-историю (п�
 # 2. Поставьте зависимость оркестратора
 pip install pyyaml
 
-# 3. Проверьте MCP под ваш инструмент (Serena + граф кода; для claude/zcode источник — .mcp.json)
-python ai-flow/init.py setup-mcp --tool claude
+# 3. Проверьте MCP (Serena + граф кода; источник — коммиченный .mcp.json)
+python ai-flow/init.py setup-mcp
 
 # 4. Онбординг: пусть агент изучит проект и наполнит память + обзор в specs/README
 #    — в Claude Code выполните скилл:
@@ -191,7 +198,7 @@ python ai-flow/init.py setup-mcp --tool claude
 
 ```bash
 # новый проект: язык кода + язык общения агента с вами
-python ai-flow/init.py init --target ../my-project --tool claude --lang typescript --comm-lang ru
+python ai-flow/init.py init --target ../my-project --lang typescript --comm-lang ru
 ```
 
 `init` не перезаписывает уже существующие файлы (если не передать `--force`), а `.gitignore` — дополняет.
@@ -210,9 +217,9 @@ python ai-flow/run_tasks.py
 /sync-docs
 ```
 
-> `/new-task` и `/sync-docs` — это **скиллы Claude Code** (набираются в его чате). Если работаете не
-> в Claude Code, вместо скиллов вручную скармливайте агенту соответствующий промт из
-> `ai-flow/docs/prompts/` — результат тот же.
+> `/new-task` и `/sync-docs` — это **скиллы Claude Code** (набираются в его чате). Работаете в другом
+> инструменте — один раз прогоните `ai-flow/docs/prompts/PROMT_TOOL.md` (он создаст такие же точки
+> входа в вашем формате) либо скармливайте агенту нужный промт из `ai-flow/docs/prompts/` руками.
 
 ---
 
@@ -222,8 +229,9 @@ python ai-flow/run_tasks.py
 
 Если у вас уже есть проект и вы не хотите разбираться в установщике вручную — отдайте работу самому
 агенту. Ниже два готовых промта: **первый ставит флоу**, **второй настраивает его под ваш код**.
-Откройте кодинг-CLI (Claude Code, Codex CLI, Cursor, …) **в корне своего проекта** и скопируйте промт
-в чат целиком, заменив плейсхолдеры в угловых скобках.
+Откройте кодинг-CLI **в корне своего проекта** и скопируйте промт в чат целиком, заменив
+плейсхолдеры в угловых скобках. Если ваш CLI — не Claude Code, добавьте третьим шагом
+[адаптацию под инструмент](#другой-инструмент-не-claude-code).
 
 ### Промт 1 — установка флоу
 
@@ -236,9 +244,8 @@ python ai-flow/run_tasks.py
    git clone --depth 1 https://github.com/nazarovsa/ai-template.git ../ai-template-src
 
 2. Запусти установщик, целясь в корень ТЕКУЩЕГО проекта:
-   python ../ai-template-src/ai-flow/init.py init --target . --tool <TOOL> --lang <LANG> --comm-lang <COMM_LANG>
-   где <TOOL> = claude | codex | cursor | gemini | zcode,
-       <LANG> = основной язык кода проекта (python | typescript | csharp | go | java | rust …),
+   python ../ai-template-src/ai-flow/init.py init --target . --lang <LANG> --comm-lang <COMM_LANG>
+   где <LANG> = основной язык кода проекта (python | typescript | csharp | go | java | rust …),
        <COMM_LANG> = язык, на котором ты говоришь со мной (ru | en | …).
    Флаг --force НЕ используй: установщик намеренно пропускает уже существующие файлы.
 
@@ -251,10 +258,9 @@ python ai-flow/run_tasks.py
    «Implementation rules», «Always-apply rules» — в мой CLAUDE.md, сохранив все мои правила.
 
 5. Проверь результат установки: появились ai-flow/ (run_tasks.py, init.py, agents.yml, docs/),
-   .serena/ (project.yml + memories), .mcp.json, .github/workflows/ai-flow-tasks.yml, а также
-   субагенты и скиллы вашего инструмента (.claude/agents + .claude/skills, либо адаптеры
-   .codex/prompts / .cursor/rules / .gemini/prompts). Для claude/zcode убедись, что в
-   .claude/settings.json есть SessionStart-хук и enabledMcpjsonServers.
+   .serena/ (project.yml + memories), .mcp.json, .github/workflows/ai-flow-tasks.yml, субагенты и
+   скиллы (.claude/agents + .claude/skills). Убедись, что в .claude/settings.json есть
+   SessionStart-хук и enabledMcpjsonServers.
 
 6. Поставь зависимость оркестратора и проверь его вхолостую:
    pip install pyyaml
@@ -312,9 +318,10 @@ python ai-flow/run_tasks.py
 
 | Ситуация | Что учесть |
 |---|---|
-| Работаете **не** в Claude Code | Скиллы `/new-task`, `/sync-docs`, `/new-prd` недоступны — скармливайте агенту `PROMT_TASKS.md`, `PROMT_SERENA.md`, `PROMT_PRD.md` из `ai-flow/docs/prompts/` |
+| Работаете **не** в Claude Code | Прогоните `ai-flow/docs/prompts/PROMT_TOOL.md` под своим инструментом — он создаст роли и точки входа в его формате; см. [раздел](#другой-инструмент-не-claude-code) |
 | В проекте уже есть `CLAUDE.md`/`AGENTS.md` | Установщик их не тронет — слияние правил делает агент (шаг 4 промта 1); проверьте результат глазами |
 | Флоу не должен попасть в git | См. [«Не коммитить флоу в git»](#не-коммитить-флоу-в-git) — глобальный gitignore вместо репозиторного |
+| Уже есть `.codex/`, `.cursor/`, `.gemini/` и т. п. | Установщик их не создаёт и не трогает — их наполняет `PROMT_TOOL` под ваш инструмент |
 | Нужен «чистый» старт без существующего кода | Проще [Сценарий A](#сценарий-a-начать-новый-проект-на-базе-шаблона-проще-всего): шаблон клонируется как основа нового проекта |
 
 ---
@@ -430,7 +437,7 @@ python ai-flow/run_tasks.py --feature user-login
 <repo>/
 ├── README.md              # этот файл — как пользоваться флоу
 ├── CLAUDE.md              # ЕДИНЫЙ свод правил + таблица read_memory(...) (на English)
-├── AGENTS.md              # редирект прочих инструментов (Codex/Cursor/…) на CLAUDE.md
+├── AGENTS.md              # редирект прочих инструментов на CLAUDE.md + указание на PROMT_TOOL
 ├── .mcp.json              # MCP-серверы проекта: serena + codebase-memory-mcp (граф кода)
 ├── .claude/
 │   ├── settings.json      # сюда init.py вписывает SessionStart-хук + enabledMcpjsonServers
@@ -444,21 +451,21 @@ python ai-flow/run_tasks.py --feature user-login
 │       └── ai-flow-tasks.yml  # CI: запуск задач в GitHub Actions с созданием PR
 └── ai-flow/               # ВСЯ инфраструктура флоу
     ├── run_tasks.py       # ОРКЕСТРАТОР авто-выполнения задач
-    ├── init.py            # УСТАНОВЩИК: развернуть/адаптировать под инструмент + настроить MCP
-    ├── agents.yml         # конфиг агентов (claude / codex / zcode) и оркестратора
+    ├── init.py            # УСТАНОВЩИК: развернуть флоу в проект + проверить MCP
+    ├── agents.yml         # конфиг агента-исполнителя (claude) и оркестратора
     ├── hooks/
     │   ├── check_memory_sync.py    # хук: сверяет таблицу в CLAUDE.md с файлами памяти
     │   └── hooks.config.json       # настройки хука
     └── docs/
-        ├── prompts/       # 6 промтов: PROMT_PRD / PROMT_SPEC / PROMT_TASKS / PROMT_AGENT / PROMT_SERENA / PROMT_CI
+        ├── prompts/       # 7 промтов: PROMT_PRD / PROMT_SPEC / PROMT_TASKS / PROMT_AGENT / PROMT_SERENA / PROMT_CI / PROMT_TOOL
         ├── core_templates/# НОРМАТИВНЫЕ правила реализации: backend_template / frontend_template
         ├── specs/         # спеки + функциональность: root README + <feature>/{README,IMPLEMENTED}
         ├── tasks/         # задачи по фичам: <YYYYMMddHHmm_FEATURE>/{README, задачи, done/}
         └── CHANGELOG.md   # хронологический журнал выполненных задач
 ```
 
-**Как читать эту структуру.** Всё, что нужно инструментам «из коробки» (правила и авто-обнаружение),
-живёт в корне и в `.claude/`/`.codex/`/`.serena/`. Всё, что относится к самому процессу (скрипты,
+**Как читать эту структуру.** Всё, что нужно инструменту «из коробки» (правила и авто-обнаружение),
+живёт в корне и в `.claude/`/`.serena/`. Всё, что относится к самому процессу (скрипты,
 промты, задачи, спеки, журнал) — под `ai-flow/`. Такое разделение позволяет
 [не тащить флоу в git](#не-коммитить-флоу-в-git),
 если он вам нужен только локально.
@@ -480,7 +487,7 @@ python ai-flow/run_tasks.py --feature user-login
 
 ---
 
-### Роли шести промтов
+### Роли семи промтов
 
 | Промт | Вход | Выход | Когда запускать |
 |---|---|---|---|
@@ -490,6 +497,7 @@ python ai-flow/run_tasks.py --feature user-login
 | `PROMT_TASKS.md` | спека/требования | фича-папка с DesignReview + задачами | на каждую новую доработку (`/new-task`) |
 | `PROMT_AGENT.md` | одна задача (+ контекст) | реализованный код | **автоматически** — его использует оркестратор, вручную не запускают |
 | `PROMT_CI.md` | название целевой CI-системы | пайплайн для неё (GitLab CI, Jenkins, …) | когда нужен запуск задач не в GitHub Actions |
+| `PROMT_TOOL.md` | инструмент, из-под которого его запустили | роли, точки входа, хук, MCP и запись в `agents.yml` в формате этого инструмента | **один раз**, если работаете не в Claude Code |
 
 ---
 
@@ -501,8 +509,8 @@ python ai-flow/run_tasks.py --feature user-login
 
 ```bash
 python ai-flow/run_tasks.py                      # агент по умолчанию из agents.yml (claude/sonnet)
-python ai-flow/run_tasks.py --agent codex --model gpt-5-codex   # другой агент/модель
-python ai-flow/run_tasks.py --agent zcode --model glm-4.6
+python ai-flow/run_tasks.py --model opus         # другая модель того же агента
+python ai-flow/run_tasks.py --agent <name>       # другой агент — если он добавлен в agents.yml (PROMT_TOOL)
 python ai-flow/run_tasks.py --feature user-login # только задачи из папок фич, где имя совпадает
 python ai-flow/run_tasks.py --task add-login     # только задачи, чьё имя содержит подстроку
 python ai-flow/run_tasks.py --dry-run            # показать план, ничего не выполняя
@@ -520,23 +528,18 @@ python ai-flow/run_tasks.py --config path.yml    # свой конфиг вме�
 
 ### Установщик — `init.py`
 
-Разворачивает флоу в целевую папку и адаптирует под конкретный инструмент.
+Разворачивает флоу в целевую папку. Настраивает **Claude Code**; под другой инструмент флоу
+адаптирует не установщик, а промт [`PROMT_TOOL`](#другой-инструмент-не-claude-code).
 
 ```bash
 # развернуть в новую папку: язык кода + язык общения
-python ai-flow/init.py init --target ../my-project --tool claude --lang typescript --comm-lang ru
+python ai-flow/init.py init --target ../my-project --lang typescript --comm-lang ru
 
-# развернуть в текущую папку под Codex
-python ai-flow/init.py init --tool codex
+# развернуть в текущую папку
+python ai-flow/init.py init
 
-# только пере-сгенерировать адаптеры субагентов/скиллов под другой инструмент
-python ai-flow/init.py adapt --tool cursor
-
-# только настроить MCP (Serena + граф кода) под инструмент  (алиас: setup-serena)
-python ai-flow/init.py setup-mcp --tool claude
-
-# список поддерживаемых инструментов
-python ai-flow/init.py list-tools
+# только проверить MCP (Serena + граф кода)  (алиас: setup-serena)
+python ai-flow/init.py setup-mcp
 ```
 
 Флаги `init`:
@@ -544,17 +547,15 @@ python ai-flow/init.py list-tools
 | Флаг | По умолчанию | Смысл |
 |---|---|---|
 | `--target DIR` | `.` | куда разворачивать |
-| `--tool TOOL` | `claude` | целевой инструмент (`claude`/`codex`/`cursor`/`gemini`/`zcode`) |
 | `--lang LANG` | `python` | язык проекта — прописывается в `.serena/project.yml` |
 | `--comm-lang LANG` | `en` | язык, на котором агент говорит с вами (строка в `CLAUDE.md`) |
 | `--force` | — | перезаписывать уже существующие файлы |
-| `--no-serena` | — | пропустить шаг настройки MCP (Serena + граф кода) |
+| `--no-serena` | — | пропустить шаг проверки MCP (Serena + граф кода) |
 
 Что делает `init` по шагам: копирует набор файлов, включая `.mcp.json` (пропуская существующие без
-`--force`) → проставляет язык проекта и язык общения → выставляет `default_agent` → дополняет
-`.gitignore` → для не-Claude инструментов генерирует адаптеры (`.codex/prompts`, `.cursor/rules`,
-`.gemini/prompts`) → для claude/zcode вписывает в `.claude/settings.json` SessionStart-хук **и**
-`enabledMcpjsonServers` (доверие серверам из `.mcp.json`) → проверяет MCP (если не `--no-serena`).
+`--force`) → проставляет язык проекта и язык общения → дополняет `.gitignore` → вписывает в
+`.claude/settings.json` SessionStart-хук **и** `enabledMcpjsonServers` (доверие серверам из
+`.mcp.json`) → проверяет MCP (если не `--no-serena`).
 
 ### Скиллы Claude Code (набираются в чате)
 
@@ -567,7 +568,8 @@ python ai-flow/init.py list-tools
 
 Скиллы `/new-task`, `/sync-docs` и `/run-tasks` намеренно «тонкие» — вся логика в субагентах. `/new-prd` ведёт
 **интерактивное** интервью прямо в чате (субагент не может задавать вопросы пользователю). Вне Claude
-Code используйте промты напрямую: `PROMT_PRD.md` вместо `/new-prd`, `PROMT_TASKS.md` вместо `/new-task`,
+Code эти же четыре точки входа создаёт `PROMT_TOOL` в формате вашего инструмента; без адаптации
+используйте промты напрямую: `PROMT_PRD.md` вместо `/new-prd`, `PROMT_TASKS.md` вместо `/new-task`,
 `PROMT_SERENA.md` вместо `/sync-docs`.
 
 ---
@@ -674,23 +676,18 @@ context:                       # все пути — относительно к
   inline_memories: false       # false → подкладывать указатели на память; true → полный текст
 
 agents:
-  claude:                      # Claude Code
+  claude:                      # Claude Code — единственный агент из коробки
     command: "claude --model {model} --print --dangerously-skip-permissions"
     model: sonnet
-  codex:                       # OpenAI Codex CLI (промт читается из stdin через хвостовой "-")
-    command: "codex exec -m {model} --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -"
-    model: gpt-5-codex
-  zcode:                       # zcode / Z.ai GLM (headless)
-    command: "zcode -p -m {model}"
-    model: glm-4.6
-    # env:                     # для Claude-совместимого прокси
-    #   ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic"
-    #   ANTHROPIC_AUTH_TOKEN: "${ZAI_API_KEY}"
 ```
 
 - `{model}` в строке `command` подставляется из `model` агента или флага `--model`.
-- Флаги codex/zcode **сверяйте с их `--help`** — реальные ключи могут отличаться; меняется только строка
-  `command`, остальной флоу не зависит от инструмента.
+- **Другой CLI добавляется сюда отдельной записью** — но не руками «по аналогии»: запустите
+  `ai-flow/docs/prompts/PROMT_TOOL.md` под этим инструментом, он сверит реальные флаги его headless-режима
+  (`--help`), прогонит smoke-тест и допишет запись сам. Сам оркестратор от инструмента не зависит:
+  меняется только строка `command`.
+- Если CLI не умеет читать промт из stdin, в `command` ставится плейсхолдер `{prompt_file}` —
+  оркестратор запишет промт во временный файл и подставит его путь.
 - `inline_memories: true` полезно для агентов без доступа к Serena MCP — тогда весь текст памяти
   вставляется прямо в промт (дороже по токенам, но не требует MCP).
 
@@ -794,8 +791,9 @@ gh workflow run ai-flow-tasks.yml -f dry_run=true
   успевших задач, с предупреждением в теле, а сам run будет помечен красным.
 - **PR, созданный `GITHUB_TOKEN`, не запускает другие workflow** — это ограничение GitHub. Если на PR
   должны срабатывать проверки, используйте GitHub App (`actions/create-github-app-token`) или PAT.
-- **Только агент `claude`** ставится в CI. Для `codex`/`zcode` добавьте установку их CLI в шаг
-  `Install the toolchain` и имя агента в опции параметра `agent`.
+- **Только агент `claude`** ставится в CI. Для другого CLI (добавленного в `agents.yml` через
+  `PROMT_TOOL`) допишите установку его бинаря в шаг `Install the toolchain` и имя агента в опции
+  параметра `agent`.
 - Параллельные запуски на одной ветке сериализуются (`concurrency`) — задачи двигают общие файлы.
 
 ### Другая CI-система: GitLab CI, Jenkins и прочие
@@ -848,19 +846,18 @@ gh workflow run ai-flow-tasks.yml -f dry_run=true
 /sync-docs
 ```
 
-**Как настроить MCP.** Для claude/zcode источник — коммиченный `.mcp.json` (serena + граф кода), а
-доверие им прописано в `.claude/settings.json` (`enabledMcpjsonServers`). Проверить окружение:
+**Как настроить MCP.** Источник — коммиченный `.mcp.json` (serena + граф кода), а доверие им
+прописано в `.claude/settings.json` (`enabledMcpjsonServers`). Проверить окружение:
 
 ```bash
-python ai-flow/init.py setup-mcp --tool claude    # алиас: setup-serena; или на этапе init
+python ai-flow/init.py setup-mcp    # алиас: setup-serena; или на этапе init
 ```
 
 Команда убеждается, что `.mcp.json` на месте, а `uvx` и бинарь `codebase-memory-mcp` доступны на PATH
 (иначе подсказывает, как поставить). Ставить серверы вручную для Claude Code не нужно — их поднимает
-`.mcp.json`. Для Codex — секции `[mcp_servers.serena]` и `[mcp_servers.codebase-memory-mcp]` в
-проектном `.codex/config.toml`; для Cursor — `.cursor/mcp.json` (`init.py setup-mcp` создаёт эти
-настройки сам, поскольку инструменты не читают Claude-специфичный `.mcp.json`). После настройки Codex
-нужно начать новую сессию, чтобы MCP-инструменты появились в её наборе инструментов.
+`.mcp.json`. Другие инструменты этот файл **не читают** и держат MCP в собственном конфиге
+(`.codex/config.toml`, `.cursor/mcp.json`, …) — их прописывает `PROMT_TOOL` при адаптации; после
+этого обычно нужна новая сессия инструмента, чтобы MCP-инструменты появились в её наборе.
 Документация: <https://github.com/oraios/serena>, <https://github.com/DeusData/codebase-memory-mcp>.
 
 ---
@@ -874,8 +871,8 @@ python ai-flow/init.py setup-mcp --tool claude    # алиас: setup-serena; и
 - **сиротах** — файл памяти есть, но в таблице на него нет строки.
 
 Это **best-effort напоминание** (не блокирует), запускается как `SessionStart`-хук — при старте сессии.
-`init.py` подмешивает его в существующий `.claude/settings.json`, не затирая другие хуки (для инструментов
-claude/zcode).
+`init.py` подмешивает его в существующий `.claude/settings.json`, не затирая другие хуки. В другом
+инструменте хук регистрирует `PROMT_TOOL` в его собственном конфиге хуков.
 
 Настройки — `ai-flow/hooks/hooks.config.json`, секция `memory_sync`:
 
@@ -909,32 +906,71 @@ claude/zcode).
 
 ---
 
-## Поддерживаемые инструменты
+## Другой инструмент, не Claude Code
 
-`python ai-flow/init.py list-tools`:
+Шаблон настроен под **Claude Code** и только под него: субагенты `.claude/agents/`, скиллы
+`.claude/skills/`, `SessionStart`-хук в `.claude/settings.json`, MCP из `.mcp.json`. Адаптеров под
+Codex/Cursor/Gemini/zcode в репозитории больше нет — вместо них один промт, который делает адаптацию
+на вашей стороне, под ту версию CLI, которая у вас реально стоит.
 
-| Инструмент | Субагенты/скиллы | Может быть агентом-исполнителем (`run_tasks`) |
-|---|---|---|
-| `claude` | нативные `.claude/agents` + `.claude/skills` | да |
-| `zcode` | нативные (Claude-совместимый) | да |
-| `codex` | адаптируются в `.codex/prompts/*.md` + `AGENTS.md` | да |
-| `cursor` | адаптируются в `.cursor/rules/*.mdc` | нет |
-| `gemini` | адаптируются в `.gemini/prompts/*.md` + `GEMINI.md` | нет |
+**Что при этом работает и без адаптации** (это просто файлы, их читает любой агент): правила
+`CLAUDE.md` (+ редирект `AGENTS.md`), промты `ai-flow/docs/prompts/`, задачи и спеки
+`ai-flow/docs/`, память `.serena/memories/*.md`, оркестратор `python ai-flow/run_tasks.py`.
+Не работает без адаптации: скиллы `/new-prd`, `/new-task`, `/sync-docs`, `/run-tasks`, субагенты,
+хук синхронизации памяти, автоподъём MCP-серверов.
 
-Для не-Claude инструментов субагенты/скиллы перегенерируются в их формат, а файл-инструкция инструмента
-(`AGENTS.md`/`GEMINI.md`/правило Cursor) лишь **редиректит на `CLAUDE.md`** — чтобы не дублировать правила.
+### Как адаптировать
+
+Откройте **свой** агентский CLI в корне проекта (важно: именно тот, под который адаптируем — промт
+исследует инструмент, в котором запущен) и дайте ему такой промт:
+
+```text
+Выполни ai-flow/docs/prompts/PROMT_TOOL.md — адаптируй ai-flow под инструмент, в котором ты запущен.
+
+1. Инструмент: <название и версия твоего CLI — возьми из его --version>
+2. Делать этот инструмент исполнителем задач в ai-flow/agents.yml: да
+3. Оставить файлы Claude Code (.claude/, .mcp.json): да
+```
+
+Промт заставляет агента **сначала проверить** (через `--help` и актуальную документацию), что его
+инструмент реально умеет: субагентов, скиллы/команды, хуки, MCP, headless-режим. Ничего не
+поддерживается — он не подделывает, а пишет об этом в отчёте. Дальше он:
+
+| Кусок флоу | Что делает `PROMT_TOOL` |
+|---|---|
+| Правила | файл-инструкцию инструмента делает **редиректом** на `CLAUDE.md` (не копией) |
+| 4 роли (`prd-author`, `task-author`, `doc-keeper`, `task-runner`) | перекладывает в нативный формат; если субагентов нет — вшивает тело роли в точку входа целиком |
+| 4 точки входа (`/new-prd`, `/new-task`, `/sync-docs`, `/run-tasks`) | создаёт как скиллы/команды инструмента с теми же триггерами |
+| Хук `check_memory_sync.py` | регистрирует на событие старта сессии (включив хуки, если они выключены) |
+| MCP (serena + граф кода) | прописывает в собственный конфиг инструмента, добавляет доверие/аппрув |
+| `agents.yml` | добавляет запись агента-исполнителя с проверенной командой headless-запуска |
+| Доки | обновляет `CLAUDE.md`, `README.md`, память `suggested-commands`, `CHANGELOG.md`, `MANIFEST` в `init.py` |
+
+Что он **не** имеет права сломать (инварианты промта): `CLAUDE.md` остаётся единственным источником
+правил, `.claude/` не удаляется, `run_tasks.py` не правится, агент-исполнитель не делает коммитов
+и печатает `<promise>COMPLETE</promise>`, память остаётся читаемой как обычные `.md` даже без MCP.
+
+В конце промт требует **проверку, а не рассуждения**: инструмент должен увидеть все четыре точки
+входа своей же командой, хук — сработать, `python ai-flow/run_tasks.py --dry-run` — отработать, а
+команда исполнителя — пройти smoke-тест (запуск с промтом «напечатай маркер», без правок репозитория).
+
+> Тонкий момент, на котором уже спотыкались: «Claude-совместимый» инструмент всё равно обычно **не
+> читает** `.mcp.json` и `.claude/settings.json` и не видит субагентов из `.claude/agents/` — тонкий
+> скилл-роутер у него превращается в ссылку в никуда. Поэтому промт требует вшивать тело роли, если
+> субагентов нет. И ещё: хуки во многих CLI по умолчанию выключены — регистрация хука в конфиге без
+> включения даёт тишину, а не ошибку.
 
 ---
 
 ## Не коммитить флоу в git
 
-Если не нужно тащить флоу в репозиторий, исключите весь набор (`ai-flow/`, `.claude/`, `.codex/`,
-`.serena/`, `CLAUDE.md`, `AGENTS.md`) через **глобальный gitignore** (личный, на все репозитории) — тогда
+Если не нужно тащить флоу в репозиторий, исключите весь набор (`ai-flow/`, `.claude/`, `.serena/`,
+`CLAUDE.md`, `AGENTS.md`) через **глобальный gitignore** (личный, на все репозитории) — тогда
 репозиторный `.gitignore` не трогается:
 
 ```bash
 git config --global core.excludesFile ~/.gitignore_global
-printf '%s\n' 'ai-flow/' '.claude/' '.codex/' '.serena/' 'CLAUDE.md' 'AGENTS.md' 'BUILD_PROMPT.md' >> ~/.gitignore_global
+printf '%s\n' 'ai-flow/' '.claude/' '.serena/' 'CLAUDE.md' 'AGENTS.md' 'BUILD_PROMPT.md' >> ~/.gitignore_global
 ```
 
 Для одного репозитория без коммита правила — те же строки в `.git/info/exclude`. Помните: `.gitignore`
@@ -967,8 +1003,9 @@ printf '%s\n' 'ai-flow/' '.claude/' '.codex/' '.serena/' 'CLAUDE.md' 'AGENTS.md'
 **Хук `memory-sync` ругается на рассинхрон.** Либо создайте недостающую память (`write_memory` / `/sync-docs`),
 либо уберите лишнюю строку из таблицы `CLAUDE.md`, либо добавьте запись в `ignore_memories`.
 
-**Использую не Claude Code.** Скиллы `/new-prd`, `/new-task` и `/sync-docs` — это механика Claude Code.
-В других инструментах скармливайте агенту напрямую `ai-flow/docs/prompts/PROMT_PRD.md`,
-`PROMT_TASKS.md` и `PROMT_SERENA.md`. Для запуска задач другим CLI — `--agent codex`/`--agent zcode`
-и сверьте флаги команды в `agents.yml`.
+**Использую не Claude Code.** Скиллы `/new-prd`, `/new-task`, `/sync-docs`, `/run-tasks`, субагенты и
+хук — это механика Claude Code. Один раз прогоните `ai-flow/docs/prompts/PROMT_TOOL.md` из-под своего
+CLI — он создаст те же точки входа в его формате и добавит его в `agents.yml` как исполнителя (см.
+[раздел](#другой-инструмент-не-claude-code)). До адаптации скармливайте агенту промты напрямую:
+`PROMT_PRD.md`, `PROMT_TASKS.md`, `PROMT_SERENA.md`.
 ```
