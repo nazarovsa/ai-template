@@ -60,6 +60,8 @@ MANIFEST = [
     "ai-flow/docs/CHANGELOG.md",
     "ai-flow/hooks/check_memory_sync.py",
     "ai-flow/hooks/hooks.config.json",
+    "ai-flow/tests/test_parse_deps.py",
+    "ai-flow/tests/test_parallel_execution.py",
     ".claude/agents/prd-author.md",
     ".claude/agents/task-author.md",
     ".claude/agents/doc-keeper.md",

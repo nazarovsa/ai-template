@@ -51,3 +51,13 @@ search only when they are not enough — never load a whole template by default.
   next feature run retries it.
 - Prompt size: the orchestrator sends only the last `context.changelog_entries` changelog entries,
   and does not embed `CLAUDE.md` for an agent with `loads_claude_md: true` (the CLI loads it itself).
+
+## Parallel batches
+- Tasks of one feature that mutually list each other in `Parallel with:` (and are all ready) run as
+  one atomic batch, each in an isolated git worktree. A **parallel worker** writes product code +
+  tests and meets the build gate, but touches NO shared doc (`CLAUDE.md`, changelog, specs, memories,
+  task Markdown incl. `NOTES.md`) — it ends its summary with its notes entry. The **integration pass**
+  writes one `NOTES.md` entry per batched task, reconciles, builds (under the task unit also tests +
+  docs); only then is the main branch fast-forwarded. Needs a clean worktree and git auto-commit.
+- `Depends on:` stays a hard gate. Keep every reference on that line (indented continuation lines are
+  fine, a new bullet is not); parentheses, backticks, `.md` and text after an em dash are ignored.

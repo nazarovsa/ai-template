@@ -91,7 +91,8 @@ Never leave the tree in a state where the next agent (or CI) pulls a solution th
 ## Feature Notes (always)
 
 APPEND an entry for this task to the feature notes `ai-flow/docs/tasks/<feature>/NOTES.md` (create
-the file with a `# Feature notes — <feature>` heading if it does not exist). Later tasks of the feature
+the file with a `# Feature notes — <feature>` heading if it does not exist; a parallel worker prints
+the entry instead — see "Parallel Batch Roles"). Later tasks of the feature
 read it instead of re-exploring the code, and the verification pass writes the feature's docs from it.
 Facts, not prose — about 15 lines:
 
@@ -106,6 +107,23 @@ Facts, not prose — about 15 lines:
 - Docs to update: <behavior / architecture / commands the docs must reflect — or "none">
 - Tests: <test files written; "not run" under the feature unit of work>
 ```
+
+## Parallel Batch Roles (only when the prompt says so)
+
+The orchestrator may run mutually declared `Parallel with:` peers of one feature as an atomic batch,
+each in its own git worktree. Two roles override the notes and documentation steps:
+
+- **Parallel worker** — the prompt carries "Isolated parallel-worker rules". Implement the product code
+  and tests and meet the build gate of the unit of work, but do NOT edit the shared coordination files:
+  `CLAUDE.md`, the changelog, `ai-flow/docs/specs/`, `.serena/memories/`, and the Markdown under
+  `ai-flow/docs/tasks/` (task files, the DesignReview, `NOTES.md`). END your summary with this task's
+  feature-notes entry in the format above instead. A worker that touches a shared file fails the
+  whole batch.
+- **Batch integration pass** — the task is "Integrate parallel task batch". The workers' commits are
+  already combined in your checkout; do not reimplement them. Reconcile integration issues, APPEND one
+  feature-notes entry per batched task (from the worker reports, corrected where the combined code
+  differs), and build the combined solution — under the task unit of work also run the tests and write
+  the docs below.
 
 ## Documentation — follows the unit of work
 

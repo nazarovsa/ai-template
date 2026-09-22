@@ -25,9 +25,15 @@ launch the runner, and report what happened.
   only if it is green. A `--task` run runs that task's tests and docs; if it closes the feature, the
   verification pass follows. A feature with every task in `done/` but still outside `tasks/done/` is
   unverified — a feature run verifies it first. `NOTES.md` in a feature folder is not a task.
+- **Parallel batches:** ready tasks of one feature that mutually list each other in `Parallel with:`
+  run as one atomic batch (isolated git worktrees, one integration pass, then a fast-forward). This
+  needs a clean worktree and git auto-commit — if the runner refuses with "clean main worktree",
+  report it; do not stash or commit on the user's behalf. A failed batch leaves the main worktree
+  untouched (a finished-but-unmerged batch is kept as branch `ai-flow/recover-<task>`).
 - Relevant flags: `--feature <name|substring>` (only that feature), `--task <stem|substring>` (only that
-  one task, then stop), `--agent <name>` / `--model <m>` (override the executor), `--dry-run` (print the
-  plan without executing — with `--feature` or `--task` it prints only the FIRST ready task).
+  one task, then stop; always sequential), `--agent <name>` / `--model <m>` (override the executor),
+  `--max-parallel <n>` (batch size limit; `0`/`1` = sequential), `--dry-run` (print the plan without
+  executing — with `--feature` or `--task` it prints only the FIRST ready task or batch).
 
 ## Resolve the request first
 
@@ -71,7 +77,7 @@ unverified feature — it re-runs just the verification pass.
   the task id.
 - Do NOT edit task files, specs, memories, or application code, and do NOT git commit — the orchestrator
   handles moving tasks to `done/` and committing. Do NOT pass `--bare` (it skips CLAUDE.md / `.claude/`).
-- Pass `--agent` / `--model` only when the user asks; otherwise let `agents.yml` decide.
+- Pass `--agent` / `--model` / `--max-parallel` only when the user asks; otherwise let `agents.yml` decide.
 - If a task fails, surface the runner's error output and the failure count — do not retry blindly.
 
 ## Report

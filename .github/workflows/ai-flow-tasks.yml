@@ -44,6 +44,10 @@ on:
         description: "Model override. Empty = the agent's default from agents.yml."
         required: false
         type: string
+      max_parallel:
+        description: "Maximum explicit parallel batch size. Empty = parallel.max_workers from agents.yml; 0 or 1 forces sequential execution."
+        required: false
+        type: string
       dry_run:
         description: "Print the plan without executing (no commits, no PR)."
         required: false
@@ -228,6 +232,7 @@ jobs:
           IN_MODEL: ${{ inputs.model }}
           IN_FEATURE: ${{ inputs.feature }}
           IN_TASK: ${{ inputs.task }}
+          IN_MAX_PARALLEL: ${{ inputs.max_parallel }}
           IN_DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=(--agent "$IN_AGENT")
@@ -239,6 +244,13 @@ jobs:
           fi
           if [ -n "$IN_TASK" ]; then
             args+=(--task "$IN_TASK")
+          fi
+          if [ -n "$IN_MAX_PARALLEL" ]; then
+            if [[ ! "$IN_MAX_PARALLEL" =~ ^[0-9]+$ ]]; then
+              echo "::error::max_parallel must be a non-negative integer"
+              exit 1
+            fi
+            args+=(--max-parallel "$IN_MAX_PARALLEL")
           fi
           if [ "$IN_DRY_RUN" = "true" ]; then
             args+=(--dry-run)
@@ -258,6 +270,7 @@ jobs:
           IN_MODEL: ${{ inputs.model }}
           IN_FEATURE: ${{ inputs.feature }}
           IN_TASK: ${{ inputs.task }}
+          IN_MAX_PARALLEL: ${{ inputs.max_parallel }}
         run: |
           commits=$(git rev-list --count "${BASE_SHA}..HEAD")
           echo "commits=$commits" >> "$GITHUB_OUTPUT"
@@ -290,6 +303,7 @@ jobs:
             echo "| Model | ${IN_MODEL:-agents.yml default} |"
             echo "| Feature filter | ${IN_FEATURE:-(all pending)} |"
             echo "| Task filter | ${IN_TASK:-(none)} |"
+            echo "| Max parallel | ${IN_MAX_PARALLEL:-agents.yml default} |"
             echo "| Orchestrator outcome | ${RUN_OUTCOME} |"
             echo "| Workflow run | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} |"
             echo

@@ -14,7 +14,8 @@ Route execution of the task runner to the `task-runner` subagent.
    `ai-flow/docs/tasks/`), and whether they want **all tasks sequentially** or just the **next task**.
    If the feature is unclear, `ls ai-flow/docs/tasks/` and confirm.
 2. Delegate to the **task-runner** subagent (via the Agent/Task tool), passing the feature and the mode
-   (whole feature vs. next task) plus any `--agent` / `--model` override the user requested.
+   (whole feature vs. next task) plus any `--agent` / `--model` / `--max-parallel` override the user
+   requested.
 3. Report which tasks ran, what moved to `done/`, the feature verification pass outcome (the whole
    test suite and the feature's docs happen once per feature, after its last task), whether the feature
    was archived into `tasks/done/`, commits made, and anything that failed or is blocked.

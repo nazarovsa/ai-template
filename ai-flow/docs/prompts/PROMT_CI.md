@@ -55,7 +55,10 @@ implement the closest equivalent and record the gap in the final report.
    (`ai-flow/run-<run-id>`), so a failed run never touches the review target.
 6. **The orchestrator commits, the pipeline does not.** `run_tasks.py` moves each finished task into
    the feature's `done/` folder and commits it. The pipeline only configures a git identity, pushes,
-   and opens the merge/pull request.
+   and opens the merge/pull request. Keep the checkout clean before invoking the orchestrator and do
+   not disable git auto-commit: explicit intra-feature parallel batches require both, create detached
+   temporary worktrees, and atomically fast-forward the run branch only after deterministic
+   integration succeeds.
 7. **An empty task queue is a success, not a failure.** `run_tasks.py` exits 1 when it finds no tasks
    at all, which would otherwise paint a fresh repo's first run red. Count pending work first and
    skip the run cleanly. Pending work is the pending tasks **plus**, under `unit_of_work: feature`, the
@@ -75,9 +78,10 @@ implement the closest equivalent and record the gap in the final report.
 8. **Preserve partial results.** If the orchestrator fails partway, still open the merge/pull request
    for the tasks that completed, warn about it in the description, and mark the run failed.
 9. **Serialize concurrent runs** on the same branch — tasks move shared files.
-10. **Manual trigger with the same parameters:** `feature`, `task`, `agent`, `model`, `dry_run`,
-    `draft_pr` — mapped onto `run_tasks.py`'s flags (`--feature`, `--task`, `--agent`, `--model`,
-    `--dry-run`). Empty means "not passed", not an empty string argument.
+10. **Manual trigger with the same parameters:** `feature`, `task`, `agent`, `model`, `max_parallel`,
+    `dry_run`, `draft_pr` — mapped onto `run_tasks.py`'s flags (`--feature`, `--task`, `--agent`,
+    `--model`, `--max-parallel`, `--dry-run`). Empty means "not passed", not an empty string argument.
+    `max_parallel` is a non-negative integer; `0` or `1` forces sequential execution.
 11. **Only the `claude` agent is installed.** It is the only entry `ai-flow/agents.yml` ships. Offer
     no agent choice the pipeline cannot actually run; document how to add another CLI (its binary in
     the toolchain step + its name in the agent options) for repositories that added one via

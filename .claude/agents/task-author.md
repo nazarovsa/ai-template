@@ -43,7 +43,9 @@ Create `ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/` (FEATURE_NAME = kebab-c
 - `README.md` — the **DesignReview** (Summary / Value / Architecture / Scope / Tasks / Acceptance).
 - One task file per task: `<YYYYMMddHHmm_TASK_SUMMARY>.md` (TASK_SUMMARY = ≤5 English words, kebab-case),
   each atomic and self-contained: full signatures, concrete values, exact file paths, verifiable
-  Acceptance Criteria, and `Depends on:` (by task file name, or `none`).
+  Acceptance Criteria, `Depends on:` (by task file name, or `none`; the whole list on that line) and
+  `Parallel with:` (mutually declared independent peers of the same feature, or `none` — only after
+  comparing write sets and contracts, PROMT_TASKS §3/§10).
 
 Plus `ai-flow/docs/tasks/MILESTONES.md` — created or updated (§11), it is a planning artifact and
 belongs to you, not to `doc-keeper`.

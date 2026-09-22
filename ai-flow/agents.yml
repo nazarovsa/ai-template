@@ -21,7 +21,16 @@ git:
   message_template: "feat: task #{id} - {title}"   # truncated to <=155 chars, no tool mentions
   verify_message_template: "test: feature #{feature} - tests green"   # the verification pass commit
 
+# Explicit parallel batches — opt-in per task: only ready tasks of ONE feature that name each other in
+# `Parallel with:` (mutually and completely) run together, each in an isolated git worktree; one
+# integration pass then merges them atomically. Needs git auto-commit and a clean worktree. Without
+# such declarations every task runs sequentially; `--task` runs are always sequential.
+parallel:
+  enabled: true
+  max_workers: 2               # the largest allowed group; override with --max-parallel (0/1 = off)
+
 context:                       # all paths are relative to REPO_ROOT (the parent of ai-flow/)
+  rules_file: CLAUDE.md                             # the project rules file embedded into prompts
   tasks_dir: ai-flow/docs/tasks                     # feature folders with task files + done/
   specs_dir: ai-flow/docs/specs                     # project + per-feature specs (target + as-built)
   memories_dir: .serena/memories                    # Serena memory in the repo root (raw .md)

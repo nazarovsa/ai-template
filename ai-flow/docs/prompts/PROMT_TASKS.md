@@ -92,12 +92,35 @@ split it by concern area. Use letter suffixes for sub-tasks: `#7a`, `#7b`, `#7c`
 Every task specifies:
 - **Depends on:** `#X (what artifact it needs)` — must complete before this task
 - **Blocks:** `#Y (what it provides)` — tasks waiting on this one
+- **Parallel with:** the complete list of independent peer task filenames in the same feature, or
+  `none`. Every declaration MUST be mutual: all members of a parallel group list all other members.
 
 The graph must be a DAG (no cycles). Present it visually before the task list. Order the tasks so
 that executing them one-by-one in order NEVER passes through a non-building state (§0): each task, on
 top of all the ones before it, compiles and its tests pass. When all tasks of the feature are done,
 the feature builds and runs as a whole — the last task must not be the one that "finally makes it
 compile".
+
+`Depends on:` is always a hard gate. A task may join a parallel batch only after all its dependencies
+are complete, and only with mutually declared, ready peers from the SAME feature folder.
+
+Mark tasks parallel only after checking their write sets and contracts. Parallel peers MUST NOT:
+
+- edit the same implementation or test files (the feature notes, changelog, spec and memory updates
+  are left to the orchestrator's post-batch integration pass and the feature verification pass, and
+  are not part of this write-set comparison);
+- change/read one another's symbols, schemas, migrations, generated artifacts, or shared config;
+- require a particular integration order for correctness;
+- rely on another peer's uncommitted result.
+
+Each peer must remain a complete, independently buildable slice (§0). When safety is uncertain, omit
+parallelism and express the relationship with `Depends on:`. The orchestrator runs parallel peers in
+isolated git worktrees from the same base commit and integrates successful results deterministically
+in task-filename order before atomically fast-forwarding the main branch; task design must remain
+valid under that model. Parallel execution requires a clean git worktree and enabled git
+auto-commits; these runtime prerequisites do not make an unsafe task split safe. A declared group is
+atomic and is not split to fit the configured worker limit, so keep the group within the expected
+`parallel.max_workers` (default `2`) or explicitly plan the required operator override.
 
 ### 4. Execution Order Between Layers
 
@@ -287,6 +310,7 @@ but enough for the agent to write the implementation without ambiguity.]
 
 ## Dependencies
 - Depends on: <other-task-file-name in this feature folder> (or `none`)
+- Parallel with: <all mutually declared peer task filenames in this feature folder> (or `none`)
 - Blocks: <task this one unblocks> (optional)
 
 ---
@@ -370,6 +394,9 @@ never author a new feature named `done` or a task named `NOTES` / `README` — t
 - `FEATURE_NAME` — kebab-case name of the improvement (e.g. `user-login`, `fix-webhook-retry`).
 - `TASK_SUMMARY` — a short task name, **≤5 English words, kebab-case** (e.g. `add-login-endpoint`).
 - Execution order = filename order (timestamp prefix ⇒ chronological). Refine with `Depends on:`.
+- Independent ready tasks in the same feature may form an explicit parallel batch via reciprocal
+  `Parallel with:` declarations. Use `Parallel with: none` for sequential tasks; a malformed,
+  one-way declaration is invalid and stops the run rather than selecting sequential execution.
 - Task title inside the file = the first `#` heading (plain, no `#NN`).
 
 **9.1. Feature `README.md` (DesignReview)** — a quick-glance overview of the improvement:
@@ -397,6 +424,24 @@ intermediate steps leave the codebase non-compiling or rely on the deferred test
 ### 10. Dependencies and Conventions
 
 - `Depends on:` references other tasks **by their file name (or a substring)**, or `none`.
+- **Keep every reference on the `Depends on:` line itself — never start a new bullet mid-list.**
+  The parser reads references from that line plus indented continuation lines; a list interrupted
+  by a new bullet loses its tail **silently**, and the task then runs before its dependency —
+  worse than a stuck queue, because nothing fails loudly. A reference must contain `_` or `-`
+  (every task file name does), otherwise it is read as prose and ignored.
+- Prose on that line is tolerated and ignored: parentheses `(...)`, backticks, a trailing `.md`, and
+  anything after an em dash. Keep it short anyway — *why* a dependency exists belongs in
+  `## Dependencies`.
+- `Parallel with:` references peers by task filename (or an unambiguous substring), or `none`. Keep
+  the complete peer list on that line. It is an execution hint, never a dependency and never a way
+  around an unmet dependency.
+- Parallel declarations MUST be reciprocal and complete. For `{A, B, C}`, write `B, C` in A,
+  `A, C` in B, and `A, B` in C. The orchestrator may batch them only when all are ready and belong
+  to the same feature. One-way, cross-feature, partially ready, or over-limit explicit groups are
+  invalid and stop the run; the orchestrator does not silently fall back to sequential execution.
+- Before emitting a parallel group, compare every `**File**` and `**Test file**` path plus affected
+  contracts. Any overlapping write, migration, generated artifact, shared configuration, or
+  producer/consumer relationship requires serialization with `Depends on:`.
 - If the project has conventions, reference the relevant Serena memory inline
   (e.g. `read_memory("architecture-overview")`) so the agent knows where to look. For domain-logic
   tasks, point at `read_memory("domain-rules")` — the business rule/mechanic itself, distinct from
@@ -480,7 +525,9 @@ literally. One checkpoint task per milestone is cheaper than re-cutting a dozen.
 time, updated on every later run — milestones, their goals, coverage, exit criteria and status. State
 which milestone the features being cut now belong to.
 
-**Part 1 — Dependency graph (ASCII)** of the tasks in this feature (a DAG).
+**Part 1 — Dependency graph (ASCII)** of the tasks in this feature (a DAG). Also show explicit
+parallel groups (if any) and confirm that each group is same-feature, mutually declared, ready after
+the same dependency frontier, and write-set independent.
 
 **Part 2 — Feature `README.md`** at `ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/README.md`
 (the DesignReview from §9.1), with the task checklist.

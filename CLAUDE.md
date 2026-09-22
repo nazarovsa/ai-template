@@ -36,6 +36,13 @@ Load Serena memories and docs **on demand** — do not preload everything into c
   records the feature's docs from its notes, and only a green pass MOVES the whole feature folder into
   the global archive `ai-flow/docs/tasks/done/<feature>/` (`unit_of_work: feature`, the default — see
   the rules below).
+- Intra-feature parallelism is explicit: task files mutually list independent peers in
+  `Parallel with:`. `Depends on:` remains a hard gate; only mutually declared, ready tasks in the
+  same feature may run together. Parallel workers use isolated git worktrees and leave the shared docs
+  (feature notes included) to one integration pass; successful results are integrated
+  deterministically in task-filename order, then fast-forwarded atomically. Parallel mode requires a
+  clean git worktree and git auto-commit (`parallel` in `agents.yml`, `--max-parallel`). Authoring and
+  safety rules live in `ai-flow/docs/tasks/README.md` and `ai-flow/docs/prompts/PROMT_TASKS.md`.
 - In CI: `.github/workflows/ai-flow-tasks.yml` ("ai-flow · run tasks") runs the same orchestrator from
   the repo root on manual dispatch and opens a PR. It authenticates with the `CLAUDE_CODE_OAUTH_TOKEN`
   secret. Agent commands in `agents.yml` must NOT use `--bare`: bare mode skips CLAUDE.md / `.claude/`
