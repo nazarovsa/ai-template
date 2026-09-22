@@ -19,6 +19,15 @@ global done/ catalog (archive of fully completed features):
 Pending tasks run in filename order (timestamp prefix => chronological); explicit
 `Depends on:` lines gate ordering. `README.md` inside a feature folder is not a task.
 
+Test gate (`test_gate` in agents.yml) — the green-tests gate applies to the unit of work requested:
+    feature (default) — a feature run (no --task) tells each task agent to write its tests (TDD) and
+        make the solution compile, but NOT to run the tests. Once a feature has no pending tasks, a
+        verification pass (PROMT_VERIFY.md) builds the solution, runs the whole test suite and fixes
+        failures; only a green pass archives the feature. A feature whose tasks are all in done/ but
+        which is not archived yet is unverified, and is verified first on the next run. A --task run
+        is a single-task unit: that task runs its tests itself.
+    task — every task builds and runs the tests; features are archived right after their last task.
+
 Agents are configured in `ai-flow/agents.yml`; the template ships `claude` only (another
 agentic CLI adds its own entry — see ai-flow/docs/prompts/PROMT_TOOL.md). The prompt is
 piped via stdin, unless the agent command contains the `{prompt_file}` placeholder — then
@@ -196,6 +205,16 @@ def archive_feature_if_complete(tasks_dir: Path, feature: str) -> None:
     print(f"  ==> feature complete: {feature}/ -> {DONE_DIR}/{feature}/")
 
 
+def unverified_features(tasks_dir: Path) -> list[str]:
+    """Active features whose tasks are all in done/ — they still await the verification pass."""
+    return [d.name for d in _feature_dirs(tasks_dir)
+            if not _has_pending_tasks(d) and any((d / DONE_DIR).glob("*.md"))]
+
+
+def feature_done_tasks(tasks_dir: Path, feature: str) -> list[Path]:
+    return sorted((tasks_dir / feature / DONE_DIR).glob("*.md"))
+
+
 # ---------------------------------------------------------------------------
 # Context loaders
 # ---------------------------------------------------------------------------
@@ -277,6 +296,16 @@ def _has_changes() -> bool:
 
 
 def commit_task(task: Task, git_cfg: dict) -> bool:
+    template = git_cfg.get("message_template", "feat: task #{id} - {title}")
+    return _commit(template.format(id=task.id, title=task.title), f"#{task.id}", git_cfg)
+
+
+def commit_verification(feature: str, git_cfg: dict) -> bool:
+    template = git_cfg.get("verify_message_template", "test: feature #{feature} - tests green")
+    return _commit(template.format(feature=feature), f"feature {feature}", git_cfg)
+
+
+def _commit(message: str, label: str, git_cfg: dict) -> bool:
     if not git_cfg.get("enabled", True) or not git_cfg.get("auto_commit", True):
         return True
     if not _is_git_repo():
@@ -284,11 +313,10 @@ def commit_task(task: Task, git_cfg: dict) -> bool:
         return True
     subprocess.run(["git", "add", "-A"], cwd=REPO_ROOT, check=True)
     if not _has_changes():
-        print(f"  [!] Nothing to commit for #{task.id}")
+        print(f"  [!] Nothing to commit for {label}")
         return True
-    template = git_cfg.get("message_template", "feat: task #{id} - {title}")
     # Single line, <= COMMIT_MAX_LEN chars, no tool/AI mentions (see CLAUDE.md).
-    msg = template.format(id=task.id, title=task.title).splitlines()[0][:COMMIT_MAX_LEN]
+    msg = message.splitlines()[0][:COMMIT_MAX_LEN]
     result = subprocess.run(
         ["git", "commit", "-m", msg], cwd=REPO_ROOT, capture_output=True, text=True,
     )
@@ -316,19 +344,32 @@ def _ensure_changelog_file(changelog_file: Path) -> None:
         )
 
 
-def build_prompt(task: Task, ctx: dict, marker: str) -> str:
+def _design_block(tasks_dir: Path, feature: str) -> str:
+    design = feature_readme(tasks_dir, feature)
+    return f"## Feature DesignReview ({feature}/README.md)\n\n{design}" if design else ""
+
+
+def build_prompt(task: Task, ctx: dict, marker: str, *, defer_tests: bool) -> str:
     agent_prompt = _load_text(resolve(ctx["agent_prompt"]))
     claude_md = _load_claude_md()
     specs = _load_specs_summary(resolve(ctx["specs_dir"]))
     memories = _load_memories(resolve(ctx["memories_dir"]), inline=ctx.get("inline_memories", False))
     changelog = _load_text(resolve(ctx["changelog_file"]))
-    design = feature_readme(resolve(ctx["tasks_dir"]), task.feature)
+    design_block = _design_block(resolve(ctx["tasks_dir"]), task.feature)
     specs_dir = ctx["specs_dir"]
 
-    design_block = (
-        f"## Feature DesignReview ({task.feature}/README.md)\n\n{design}"
-        if design else ""
-    )
+    if defer_tests:
+        test_gate = ("feature — write this task's tests but do NOT run them; the feature verification "
+                     "pass runs the whole suite after the feature's last task")
+        gate_reminder = """- BLOCKING: build the whole solution, test projects included (read_memory("build-and-verify")) — it
+  MUST compile. Write every Test Cases row as a real test (TDD) but do NOT run the test suite: the
+  feature verification pass runs it once the feature's last task is done. If it does not compile, the
+  task is NOT done — do NOT print the completion marker; report the failing command and its output."""
+    else:
+        test_gate = "task — build the solution and run its tests before finishing this task"
+        gate_reminder = """- BLOCKING: build the whole project and run its tests (read_memory("build-and-verify")). The solution
+  MUST compile/build and pass tests. If it does not build, the task is NOT done — do NOT print the
+  completion marker; report the failing command and its output instead."""
 
     return f"""{agent_prompt}
 
@@ -340,6 +381,7 @@ def build_prompt(task: Task, ctx: dict, marker: str) -> str:
 
 Working directory: {REPO_ROOT}
 Feature: {task.feature}
+Test gate: {test_gate}
 
 {specs}
 
@@ -362,9 +404,7 @@ Feature: {task.feature}
 Remember:
 - Read existing code before writing.
 - Follow project rules (CLAUDE.md), the Feature DesignReview, and Serena memories.
-- BLOCKING: build the whole project and run its tests (read_memory("build-and-verify")). The solution
-  MUST compile/build and pass tests. If it does not build, the task is NOT done — do NOT print the
-  completion marker; report the failing command and its output instead.
+{gate_reminder}
 - Reusable patterns → document them as Serena memory (write_memory) + the CLAUDE.md table, NOT the changelog.
 - APPEND a factual changelog entry (what changed + files) to `{ctx["changelog_file"]}`.
 - Update the feature spec (living docs): ensure `{specs_dir}/{task.feature}/README.md` (target) exists
@@ -374,12 +414,83 @@ Remember:
 """
 
 
+def build_verify_prompt(feature: str, ctx: dict, marker: str) -> str:
+    verify_prompt = _load_text(resolve(ctx["verify_prompt"]))
+    claude_md = _load_claude_md()
+    specs = _load_specs_summary(resolve(ctx["specs_dir"]))
+    memories = _load_memories(resolve(ctx["memories_dir"]), inline=ctx.get("inline_memories", False))
+    tasks_dir = resolve(ctx["tasks_dir"])
+    design_block = _design_block(tasks_dir, feature)
+    task_list = "\n".join(
+        f"- `{p.relative_to(REPO_ROOT).as_posix()}` — {_first_heading(_load_text(p)) or p.stem}"
+        for p in feature_done_tasks(tasks_dir, feature)
+    )
+
+    return f"""{verify_prompt}
+
+---
+
+{claude_md}
+
+## Project context
+
+Working directory: {REPO_ROOT}
+Feature: {feature}
+Test gate: feature — this is the verification pass that closes it
+
+{specs}
+
+{memories}
+
+{design_block}
+
+## Tasks of this feature (implemented, tests written but not yet run)
+
+{task_list}
+
+Their changelog entries in `{ctx["changelog_file"]}` say what each task changed.
+
+---
+
+Remember:
+- BLOCKING: build the whole solution and run the WHOLE test suite (read_memory("build-and-verify")).
+  Fix every failure and re-run until green. Never weaken, skip, or delete a test to get green.
+- Every Test Cases row of every task above must exist as a real test — write any that is missing.
+- APPEND a changelog entry for this pass to `{ctx["changelog_file"]}`.
+- DO NOT git commit and do NOT move task files — the orchestrator archives the feature and commits.
+- Print exactly {marker} ONLY when the build and the whole test suite are green.
+"""
+
+
 def run_agent(task: Task, agent: dict, model: str, marker: str, timeout: int,
-              *, dry_run: bool, ctx: dict) -> bool:
+              *, dry_run: bool, ctx: dict, defer_tests: bool) -> bool:
+    tests = "deferred to the feature verification pass" if defer_tests else "run by this task"
+    return _invoke(
+        f"  >>  [{task.feature}] {task.id}: {task.title}",
+        [f"deps : {task.deps or 'none'}", f"tests: {tests}"],
+        lambda: build_prompt(task, ctx, marker, defer_tests=defer_tests),
+        agent, model, marker, timeout, dry_run=dry_run, ctx=ctx, strict=False,
+    )
+
+
+def run_verification(feature: str, agent: dict, model: str, marker: str, timeout: int,
+                     *, dry_run: bool, ctx: dict) -> bool:
+    # Strict: the pass IS the green-tests gate, so a missing marker is a failure even on exit 0.
+    return _invoke(
+        f"  ##  [{feature}] feature verification pass (build + whole test suite)",
+        [],
+        lambda: build_verify_prompt(feature, ctx, marker),
+        agent, model, marker, timeout, dry_run=dry_run, ctx=ctx, strict=True,
+    )
+
+
+def _invoke(header: str, details: list[str], make_prompt, agent: dict, model: str, marker: str,
+            timeout: int, *, dry_run: bool, ctx: dict, strict: bool) -> bool:
     command = agent["command"].replace("{model}", model)
     print(f"\n{'=' * 72}")
-    print(f"  >>  [{task.feature}] {task.id}: {task.title}")
-    print(f"  deps : {task.deps or 'none'}")
+    print(header)
+    for line in details:
+        print(f"  {line}")
     print(f"  model: {model}")
     print(f"  cmd  : {command}")
     print(f"{'=' * 72}")
@@ -389,7 +500,7 @@ def run_agent(task: Task, agent: dict, model: str, marker: str, timeout: int,
         return True
 
     _ensure_changelog_file(resolve(ctx["changelog_file"]))
-    prompt = build_prompt(task, ctx, marker)
+    prompt = make_prompt()
 
     env = os.environ.copy()
     for k, v in (agent.get("env") or {}).items():
@@ -425,6 +536,9 @@ def run_agent(task: Task, agent: dict, model: str, marker: str, timeout: int,
 
         if marker in output:
             return True
+        if strict:
+            print(f"  [fail] No completion marker (exit code {proc.returncode}) — the gate is not green")
+            return False
         if proc.returncode == 0:
             print("  [!] No completion marker — treating exit 0 as success")
             return True
@@ -466,12 +580,23 @@ def main() -> None:
         "memories_dir": ".serena/memories",
         "changelog_file": "ai-flow/docs/CHANGELOG.md",
         "agent_prompt": "ai-flow/docs/prompts/PROMT_AGENT.md",
+        "verify_prompt": "ai-flow/docs/prompts/PROMT_VERIFY.md",
         "inline_memories": False,
         **(cfg.get("context") or {}),
     }
     marker = cfg.get("completion_marker", "<promise>COMPLETE</promise>")
     timeout = int(cfg.get("task_timeout", 1200))
+    verify_timeout = int(cfg.get("verify_timeout", 2 * timeout))
     git_cfg = cfg.get("git") or {}
+
+    test_gate = str(cfg.get("test_gate", "feature")).lower()
+    if test_gate not in ("feature", "task"):
+        print(f"ERROR: test_gate must be 'feature' or 'task', got '{test_gate}' in {args.config}")
+        sys.exit(1)
+    feature_gate = test_gate == "feature"
+    # The green-tests gate follows the requested unit of work: a --task run is one task and runs its
+    # own tests; any other run executes whole features, whose tests run once in the verification pass.
+    defer_tests = feature_gate and not args.task
 
     agents = cfg.get("agents") or {}
     agent_name = args.agent or cfg.get("default_agent")
@@ -488,7 +613,20 @@ def main() -> None:
               f"YYYYMMddHHmm_FEATURE with task files (see ai-flow/docs/tasks/README.md).")
         sys.exit(1)
 
-    print(f"Agent: {agent_name}  |  model: {model or '(default)'}  |  root: {REPO_ROOT}")
+    print(f"Agent: {agent_name}  |  model: {model or '(default)'}  |  test gate: {test_gate}  |  "
+          f"root: {REPO_ROOT}")
+
+    def verify_and_archive(feature: str) -> bool:
+        ok = run_verification(feature, agent, model, marker, verify_timeout,
+                              dry_run=args.dry_run, ctx=ctx)
+        if ok and not args.dry_run:
+            archive_feature_if_complete(tasks_dir, feature)
+            if not commit_verification(feature, git_cfg):
+                sys.exit(1)
+        if not ok:
+            print(f"  [fail] Feature {feature} is not verified — it stays active with its tasks in "
+                  f"{DONE_DIR}/; the next feature run retries the verification pass.")
+        return ok
 
     failures = 0
     while True:
@@ -503,6 +641,25 @@ def main() -> None:
             if not pending:
                 print(f"Task '{args.task}' not found among pending tasks.")
                 return
+
+        # Feature gate: a feature whose tasks are all done is verified before any further work.
+        unverified = [] if (args.task or not feature_gate) else [
+            f for f in unverified_features(tasks_dir)
+            if not args.feature or args.feature.lower() in f.lower()
+        ]
+        if unverified:
+            if verify_and_archive(unverified[0]):
+                failures = 0
+            else:
+                failures += 1
+                print(f"  [fail] Failure {failures}/3")
+                if failures >= 3:
+                    print("Stopping after 3 consecutive failures.")
+                    sys.exit(1)
+            if args.dry_run:
+                break
+            time.sleep(2)
+            continue
 
         if not pending:
             print("\n[ok] All tasks completed!")
@@ -520,13 +677,20 @@ def main() -> None:
         print(f"\nDone: {len(done)}  |  Pending: {len(pending)}  |  Ready: {[t.id for t in ready]}")
 
         task = ready[0]
-        success = run_agent(task, agent, model, marker, timeout, dry_run=args.dry_run, ctx=ctx)
+        success = run_agent(task, agent, model, marker, timeout,
+                            dry_run=args.dry_run, ctx=ctx, defer_tests=defer_tests)
 
         if success:
             if not args.dry_run:
                 mark_done(task)
-                archive_feature_if_complete(tasks_dir, task.feature)
+                if not feature_gate:
+                    archive_feature_if_complete(tasks_dir, task.feature)
                 if not commit_task(task, git_cfg):
+                    sys.exit(1)
+                # A single task that closes its feature still owes the feature gate before archiving
+                # (in a feature run the loop picks the feature up as unverified on its next pass).
+                if (args.task and feature_gate and task.feature in unverified_features(tasks_dir)
+                        and not verify_and_archive(task.feature)):
                     sys.exit(1)
             failures = 0
         else:

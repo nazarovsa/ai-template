@@ -13,7 +13,7 @@ Load Serena memories and docs **on demand** — do not preload everything into c
   To work under a different agentic CLI, open that CLI here and run
   `ai-flow/docs/prompts/PROMT_TOOL.md` — it adapts the roles, entry points, hook, MCP wiring and the
   `agents.yml` executor entry to that tool. Do not hand-maintain per-tool adapters in this repo.
-- Planning prompts live in `ai-flow/docs/prompts/` (`PROMT_PRD`, `PROMT_SPEC`, `PROMT_TASKS`, `PROMT_AGENT`, `PROMT_SERENA`, `PROMT_CI`, `PROMT_TOOL`).
+- Planning prompts live in `ai-flow/docs/prompts/` (`PROMT_PRD`, `PROMT_SPEC`, `PROMT_TASKS`, `PROMT_AGENT`, `PROMT_VERIFY`, `PROMT_SERENA`, `PROMT_CI`, `PROMT_TOOL`).
   A from-scratch project starts with `PROMT_PRD` (`/new-prd`) — an interview that produces the project
   PRD at `ai-flow/docs/specs/PRD.md`, which then feeds `PROMT_SPEC`.
 - Specs & functionality live in `ai-flow/docs/specs/`: root `README.md` (project overview, filled at
@@ -29,8 +29,10 @@ Load Serena memories and docs **on demand** — do not preload everything into c
   update `MILESTONES.md`, and only then cut the next milestone's tasks — never from a stale spec.
   Rules: `ai-flow/docs/prompts/PROMT_TASKS.md` §11.
 - Automated execution: `python ai-flow/run_tasks.py` (config `ai-flow/agents.yml`). On success a task
-  file is MOVED into its feature's `done/` subfolder; once ALL tasks of a feature are done, the whole
-  feature folder is MOVED into the global archive `ai-flow/docs/tasks/done/<feature>/`.
+  file is MOVED into its feature's `done/` subfolder and committed; once ALL tasks of a feature are
+  done, the feature verification pass (`PROMT_VERIFY`) runs the whole test suite and fixes failures,
+  and only a green pass MOVES the whole feature folder into the global archive
+  `ai-flow/docs/tasks/done/<feature>/` (`test_gate: feature`, the default — see the rule below).
 - In CI: `.github/workflows/ai-flow-tasks.yml` ("ai-flow · run tasks") runs the same orchestrator from
   the repo root on manual dispatch and opens a PR. It authenticates with the `CLAUDE_CODE_OAUTH_TOKEN`
   secret. Agent commands in `agents.yml` must NOT use `--bare`: bare mode skips CLAUDE.md / `.claude/`
@@ -101,11 +103,22 @@ In CI, `.github/workflows/ai-flow-tasks.yml` provisions this itself — it insta
 
 ## Always-apply rules
 
-- **A task is done only if the solution builds and runs.** Before declaring completion — before
-  printing the completion marker or letting a commit happen — build the whole project and run its
-  tests with the project's own tooling (`read_memory("build-and-verify")`). A red build or a broken
-  run is an unfinished task: fix it or report failure. NEVER emit `<promise>COMPLETE</promise>` or
-  commit a solution that does not compile/build and pass its tests.
+- **Work is done only if the solution builds and its tests pass — and the green-tests gate applies to
+  the unit of work that was requested.** Build with the project's own tooling
+  (`read_memory("build-and-verify")`):
+  - **A whole feature was requested** (`run_tasks.py` without `--task`, or "implement feature X" in a
+    session): each task writes its tests test-first and must leave the solution **compiling**
+    (build after every task, test projects included), but the tests are **not run per task**. After
+    the feature's last task, one verification pass builds the solution and runs the **whole** test
+    suite, fixes every failure, and repeats until green (`ai-flow/docs/prompts/PROMT_VERIFY.md`). The
+    feature is done — and archived — only when that pass is green.
+  - **A single task was requested** (`run_tasks.py --task`, "do the next task"): that task builds and
+    runs the tests before it is declared done.
+
+  A red build is always an unfinished task: fix it or report failure. NEVER emit
+  `<promise>COMPLETE</promise>` or commit a solution that does not compile/build; never declare a
+  feature (or a single task) done while its tests are red; never weaken, skip, or delete tests to get
+  green.
 - **Code follows `ai-flow/docs/core_templates/`** — backend and frontend templates are binding.
   Read the relevant one before writing code; walk its feature checklist before declaring done.
 - Task setup → artifacts only in `ai-flow/docs/tasks/` (format: `ai-flow/docs/tasks/README.md`).

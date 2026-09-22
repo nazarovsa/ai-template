@@ -47,7 +47,7 @@ keeping the Claude Code files — and say so in the report.
 - `.mcp.json` — two MCP servers: `serena` (symbols + memories) and `codebase-memory-mcp` (code graph).
 - `ai-flow/agents.yml` + `ai-flow/run_tasks.py` — the orchestrator and how it invokes an agent.
 - `ai-flow/docs/prompts/` — the flow's prompts; `PROMT_AGENT.md` is what the orchestrator feeds the
-  executor on every task.
+  executor on every task, `PROMT_VERIFY.md` what it feeds the feature verification pass.
 
 ## Invariants — these must survive the adaptation
 

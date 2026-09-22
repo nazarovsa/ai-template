@@ -4,10 +4,20 @@ default_agent: claude          # which agent to use by default
 task_timeout: 1200             # per-task timeout, seconds
 completion_marker: "<promise>COMPLETE</promise>"
 
+# Green-tests gate — applies to the unit of work that was requested:
+#   feature → in a feature run (no --task) every task writes its tests (TDD) and must compile, but the
+#             tests run ONCE per feature: after its last task a verification pass (PROMT_VERIFY.md)
+#             runs the whole suite and fixes failures; only a green pass archives the feature.
+#             A --task run is a single-task unit and runs its own tests.
+#   task    → every task builds and runs the tests (no verification pass).
+test_gate: feature
+verify_timeout: 2400           # verification pass timeout, seconds (default: 2 × task_timeout)
+
 git:
   enabled: true                # false → no commits; also auto-skipped if not a git repo
   auto_commit: true
   message_template: "feat: task #{id} - {title}"   # truncated to <=155 chars, no tool mentions
+  verify_message_template: "test: feature #{feature} - tests green"   # the verification pass commit
 
 context:                       # all paths are relative to REPO_ROOT (the parent of ai-flow/)
   tasks_dir: ai-flow/docs/tasks                     # feature folders with task files + done/
@@ -15,6 +25,7 @@ context:                       # all paths are relative to REPO_ROOT (the parent
   memories_dir: .serena/memories                    # Serena memory in the repo root (raw .md)
   changelog_file: ai-flow/docs/CHANGELOG.md
   agent_prompt: ai-flow/docs/prompts/PROMT_AGENT.md
+  verify_prompt: ai-flow/docs/prompts/PROMT_VERIFY.md    # the feature verification pass
   inline_memories: false                            # false → inject memory pointers, not full text
 
 agents:

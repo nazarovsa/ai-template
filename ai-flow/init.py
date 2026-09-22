@@ -51,6 +51,7 @@ MANIFEST = [
     "ai-flow/docs/prompts/PROMT_SPEC.md",
     "ai-flow/docs/prompts/PROMT_TASKS.md",
     "ai-flow/docs/prompts/PROMT_AGENT.md",
+    "ai-flow/docs/prompts/PROMT_VERIFY.md",
     "ai-flow/docs/prompts/PROMT_SERENA.md",
     "ai-flow/docs/prompts/PROMT_CI.md",
     "ai-flow/docs/prompts/PROMT_TOOL.md",

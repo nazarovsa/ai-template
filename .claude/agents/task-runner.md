@@ -18,6 +18,12 @@ launch the runner, and report what happened.
   pending task files in filename (chronological) order, honors `Depends on:` lines, and MOVES each
   completed task into that feature's `done/` subfolder. `README.md` in a feature folder is the
   DesignReview, not a task. Config is `ai-flow/agents.yml`.
+- **Test gate** (`test_gate: feature`, the default): in a feature run the task agents write tests but
+  do not run them; after the feature's last task the runner itself launches the **feature verification
+  pass** (build + whole test suite + fixes, `PROMT_VERIFY.md`) and archives the feature only if it is
+  green. A `--task` run runs that task's tests; if it closes the feature, the verification pass
+  follows. A feature with every task in `done/` but still outside `tasks/done/` is unverified — a
+  feature run verifies it first.
 - Relevant flags: `--feature <name|substring>` (only that feature), `--task <stem|substring>` (only that
   one task, then stop), `--agent <name>` / `--model <m>` (override the executor), `--dry-run` (print the
   plan without executing — with `--feature` or `--task` it prints only the FIRST ready task).
@@ -38,7 +44,9 @@ python ai-flow/run_tasks.py --feature <FEATURE>
 ```
 This executes every ready task in the feature, one after another, moving each to `done/` and committing
 (per `agents.yml` `git:`), until none remain or a task fails 3× in a row. When the feature's last task
-is done, the whole feature folder is moved into the global archive `ai-flow/docs/tasks/done/<feature>/`.
+is done, the verification pass runs; only a green pass moves the whole feature folder into the global
+archive `ai-flow/docs/tasks/done/<feature>/` (with its own commit). The same command resumes an
+unverified feature — it re-runs just the verification pass.
 
 ## Run — the next single task
 
@@ -46,8 +54,10 @@ is done, the whole feature folder is moved into the global archive `ai-flow/docs
    ```
    python ai-flow/run_tasks.py --feature <FEATURE> --dry-run
    ```
-   The `>>  [<feature>] <task-id>: <title>` line names the next ready task. If it reports unmet
-   dependencies or "All tasks completed", relay that and stop.
+   The `>>  [<feature>] <task-id>: <title>` line names the next ready task. If it prints a
+   `##  [<feature>] feature verification pass` line instead, the next step is the verification pass —
+   run it with `python ai-flow/run_tasks.py --feature <FEATURE>`. If it reports unmet dependencies or
+   "All tasks completed", relay that and stop.
 2. Execute exactly that task:
    ```
    python ai-flow/run_tasks.py --task <TASK_ID>
@@ -66,5 +76,5 @@ is done, the whole feature folder is moved into the global archive `ai-flow/docs
 ## Report
 
 State the mode (whole feature vs. next task), the exact command run, which tasks completed and moved to
-`done/`, whether the feature was fully completed and archived into `tasks/done/`, any commits made, and
-anything that failed or is blocked on unmet dependencies.
+`done/`, the verification pass outcome (green / failed / not reached), whether the feature was archived
+into `tasks/done/`, any commits made, and anything that failed or is blocked on unmet dependencies.

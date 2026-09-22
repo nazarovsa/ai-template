@@ -63,6 +63,14 @@ Concretely, when decomposing:
 State this expectation inside each task (its final Acceptance Criterion, §7) AND verify the whole set
 respects it before emitting.
 
+**§0 is a decomposition invariant, not a promise of a per-task test run.** When a whole feature is
+executed, the green-tests gate moves to the feature (`test_gate: feature` in `ai-flow/agents.yml`):
+each task writes its tests and must compile, and the whole suite runs once in the feature verification
+pass (`PROMT_VERIFY.md`) after the last task. Tasks are still cut so that the suite *would* be green
+after every one of them — never plan "task 3 breaks it, task 5 fixes it". A sequence that relies on
+the deferred run turns the verification pass into debugging and makes a single-task run (`--task`,
+which does run the tests) fail.
+
 ### 1. One Layer per Task
 
 A task targets ONE architectural layer or concern. Do not mix data model
@@ -263,7 +271,9 @@ but enough for the agent to write the implementation without ambiguity.]
 1. [ ] [Specific, verifiable criterion]
 2. [ ] [Can be checked by reading code or running a test]
 3. [ ] The whole solution builds/compiles and its tests pass with the project's own tooling
-       (`read_memory("build-and-verify")`) — always the last criterion of every task.
+       (`read_memory("build-and-verify")`) — always the last criterion of every task. The build is
+       checked by the task; the tests run in the task when it is executed alone, or in the feature
+       verification pass when the whole feature is executed.
 
 ---
 
@@ -307,8 +317,10 @@ ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/
 └── done/                              # run_tasks.py MOVES completed tasks here (do not pre-create)
 ```
 
-When every task of a feature is done, run_tasks.py MOVES the whole feature folder into the global
-archive `ai-flow/docs/tasks/done/<YYYYMMddHHmm_FEATURE_NAME>/`. Do not pre-create `tasks/done/`, and
+When every task of a feature is done and the feature verification pass is green, run_tasks.py MOVES
+the whole feature folder into the global archive `ai-flow/docs/tasks/done/<YYYYMMddHHmm_FEATURE_NAME>/`.
+Never author a separate "run the tests" task at the end of a feature — the orchestrator runs that pass
+itself. Do not pre-create `tasks/done/`, and
 never author a new feature named `done` — that name is reserved for the archive.
 
 - `YYYYMMddHHmm` — a timestamp; obtain the current one with `date +%Y%m%d%H%M`.
@@ -330,13 +342,14 @@ never author a new feature named `done` — that name is reserved for the archiv
 ## Architecture   <affected components, approach, data/flow, key decisions>
 ## Scope          <in scope / out of scope>
 ## Tasks          <checklist of the task files in this folder>
-## Acceptance     <how we know the improvement is done — MUST include: after every task and after the
-                   whole feature, the solution builds/compiles and its tests pass (§0)>
+## Acceptance     <how we know the improvement is done — MUST include: after every task the solution
+                   builds/compiles, and after the whole feature it builds and its whole test suite
+                   passes (§0; checked by the feature verification pass)>
 ```
 
 Every feature is decomposed so it stays green throughout: each task builds on its own (§0), and the
 completed feature builds and runs as a whole. The DesignReview must not plan a sequence whose
-intermediate steps leave the codebase non-compiling.
+intermediate steps leave the codebase non-compiling or rely on the deferred test run to repair them.
 
 ### 10. Dependencies and Conventions
 
@@ -407,8 +420,10 @@ documents and plans, not features, and it MUST:
    authored from the just-corrected PRD and specs, never from their pre-milestone version.
 
 Its `## Test Cases` section states plainly that the task changes no production code, and carries the
-checks that still apply: the build and the existing test suite stay green, and the documents match
-what the code registers (error map, policies, limits) with no divergence left.
+checks that still apply: the build and the existing test suite stay green (under the feature gate the
+suite runs in the verification pass right after this task, before the next milestone's first feature
+starts), and the documents match what the code registers (error map, policies, limits) with no
+divergence left.
 
 **11.4. Why this is a task and not a note**
 

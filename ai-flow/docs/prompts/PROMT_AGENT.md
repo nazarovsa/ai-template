@@ -48,24 +48,34 @@ Your job is to implement exactly what the **Changes** section describes, make ev
 5. If a file already exists partially, read and extend it — do not overwrite.
 6. Implement every row of the task's **Test Cases** section as a real unit test in the file it names,
    mocking the dependencies it lists — no real DB, network, broker, clock or randomness. Write them
-   before or alongside the implementation, and do not weaken a case to make it pass. If a case
+   before or alongside the implementation (under the feature test gate they are written but run later,
+   in the verification pass), and do not weaken a case to make it pass. If a case
    contradicts the **Changes** section, fix the implementation, not the test; if the task itself is
    wrong, report it in your summary instead of silently dropping the case.
 7. DO NOT git commit — the orchestrator commits after you finish.
 
-## Quality Gate (blocking — no green build, no completion)
+## Quality Gate (blocking — no green gate, no completion)
 
-After implementing, **build the whole project and run its tests with the project's own tooling**
-(consult `read_memory("build-and-verify")` for the exact commands). This is a hard gate, not a
-formality:
+The green-tests gate applies to the **unit of work that was requested**, and the orchestrator states it
+in the **Test gate** line of the Project context:
 
-- The solution MUST compile/build cleanly and be runnable — no build errors, no unresolved
+- **Test gate: feature** — a whole feature was requested. The unit of work for the green-tests gate is
+  the feature, not this task. Write this task's tests test-first as usual (rule 6), but do **NOT** run
+  the test suite: once the feature's last task is done, a dedicated verification pass
+  (`PROMT_VERIFY.md`) runs the whole suite and fixes what fails. Your gate is the **build**.
+- **Test gate: task** — a single task was requested. It is its own unit of work: build **and** run the
+  tests; ALL tests (at least the ones the task introduced or touched) MUST pass.
+
+In both modes, **build the whole project with the project's own tooling** (consult
+`read_memory("build-and-verify")` for the exact commands). This is a hard gate, not a formality:
+
+- The solution MUST compile/build cleanly, test projects included — no build errors, no unresolved
   references, no broken project. Warnings that fail the build under project settings count as errors.
-- ALL tests (at least the ones the task introduced or touched) MUST pass.
-- Fix every build and test failure yourself. Do NOT weaken, skip, or delete tests to get green.
-- If you cannot make it build/pass, the task is **not complete**: do NOT print the completion
-  marker. Report what fails (the exact command and its error output) in your summary instead — a
-  reported failure is correct; a committed non-building solution is not.
+- Fix every build failure (and, under the task gate, every test failure) yourself. Do NOT weaken,
+  skip, or delete tests to get green.
+- If you cannot make it build (or, under the task gate, pass), the task is **not complete**: do NOT
+  print the completion marker. Report what fails (the exact command and its error output) in your
+  summary instead — a reported failure is correct; a committed non-building solution is not.
 
 Never leave the tree in a state where the next agent (or CI) pulls a solution that does not build.
 
@@ -117,8 +127,9 @@ If the task changed behavior, architecture, or commands, update the correspondin
 
 ## Completion
 
-Print the marker ONLY when the Quality Gate is green — the project builds and its tests pass. The
-marker is a promise that the committed solution compiles and runs; do not make it if that is false.
+Print the marker ONLY when the Quality Gate is green — the project builds, and under the task gate its
+tests pass too. The marker is a promise that the committed solution compiles (and, under the task gate,
+that its tests are green); do not make it if that is false.
 
-When (and only when) implementation is complete and the build + tests pass, print exactly:
+When (and only when) implementation is complete and the Quality Gate is green, print exactly:
 <promise>COMPLETE</promise>
