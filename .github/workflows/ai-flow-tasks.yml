@@ -152,6 +152,8 @@ jobs:
 
       # An empty queue is a no-op, not a failure — run_tasks.py itself exits 1 when it finds no tasks.
       # Reuses the orchestrator's own parser and config so the count matches what it would run.
+      # Under `unit_of_work: feature` a feature whose tasks are all done but whose verification pass
+      # has not gone green yet is work too — otherwise a failed pass would never be retried in CI.
       - name: Look for pending tasks
         id: pending
         run: |
@@ -160,17 +162,19 @@ jobs:
           sys.path.insert(0, "ai-flow")
           import run_tasks as rt
           cfg = rt.load_config(rt.DEFAULT_CONFIG)
-          tasks_dir = (cfg.get("context") or {}).get("tasks_dir", "ai-flow/docs/tasks")
-          print(len(rt.pending_tasks(rt.resolve(tasks_dir))))
+          tasks_dir = rt.resolve((cfg.get("context") or {}).get("tasks_dir", "ai-flow/docs/tasks"))
+          unit = str(cfg.get("unit_of_work", cfg.get("test_gate", "feature"))).lower()
+          unverified = rt.unverified_features(tasks_dir) if unit == "feature" else []
+          print(len(rt.pending_tasks(tasks_dir)) + len(unverified))
           PY
           )
           echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "Pending tasks: $count"
+          echo "Pending tasks + unverified features: $count"
           if [ "$count" -eq 0 ]; then
             {
               echo "## ai-flow run"
               echo
-              echo "No pending tasks in \`ai-flow/docs/tasks/\` — nothing to do."
+              echo "No pending tasks or unverified features in \`ai-flow/docs/tasks/\` — nothing to do."
               echo "Author one with the \`/new-task\` skill, commit it, then dispatch this workflow again."
             } >> "$GITHUB_STEP_SUMMARY"
           fi

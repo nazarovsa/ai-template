@@ -64,7 +64,7 @@ State this expectation inside each task (its final Acceptance Criterion, §7) AN
 respects it before emitting.
 
 **§0 is a decomposition invariant, not a promise of a per-task test run.** When a whole feature is
-executed, the green-tests gate moves to the feature (`test_gate: feature` in `ai-flow/agents.yml`):
+executed, the green-tests gate moves to the feature (`unit_of_work: feature` in `ai-flow/agents.yml`):
 each task writes its tests and must compile, and the whole suite runs once in the feature verification
 pass (`PROMT_VERIFY.md`) after the last task. Tasks are still cut so that the suite *would* be green
 after every one of them — never plan "task 3 breaks it, task 5 fixes it". A sequence that relies on
@@ -133,7 +133,8 @@ Every task type has mandatory content. The agent cannot guess — be explicit.
 - Unit tests: specific inputs → expected outputs
 - Reference `read_memory("domain-rules")` for the existing rule/mechanic, and add a final acceptance
   criterion: the new/changed rule (formula, coefficient, invariant) is captured in the `domain-rules`
-  memory (the executor persists it — see `PROMT_AGENT.md` "Consolidate Knowledge")
+  memory (a single-task run persists it itself; in a feature run the executor lists it in the feature
+  notes and the verification pass persists it — see `PROMT_AGENT.md` "Documentation")
 
 **Services / use cases:**
 - Interface with complete method signatures
@@ -218,6 +219,39 @@ A table, one row per case, with concrete values — no "valid input", no "some e
 - Real DB transaction rollback → integration task `<name>`.
 ```
 
+### 6a. Context Map (mandatory — what the executor reads first)
+
+Every task file MUST contain a `## Context` section, placed after `## Motivation` and before
+`## Changes`. It is the executing agent's reading list. Every task runs in a fresh agent session: without
+a map it loads whole templates (the backend one alone is ~13k tokens) and sweeps the codebase to find
+what you already found while decomposing. Write down what you found, so it is not rediscovered.
+
+List only what THIS task needs:
+
+- **Templates** — the core template *sections* that govern this task's code, by number and heading
+  (`backend_template.md` §5 "Работа с БД", §10 "Тесты"). Never "the whole template". Omit the line if
+  the project dropped the template.
+- **Memories** — the `read_memory(...)` names from the CLAUDE.md "Project knowledge" table that apply
+  (always `domain-rules` for a task that implements or changes domain logic).
+- **Specs** — the spec file and section the task implements.
+- **Code anchors** — 3–7 existing files or symbols with the reason to open each: the pattern to copy,
+  the type to extend, the registration point to touch. A symbol an earlier task of this feature
+  creates is named with that task (`IOrderRepository.GetByCoupon` — from `<task-file-name>`).
+
+Rules: concrete paths and headings only — no "see the relevant docs"; a section or file that does not
+exist is a defect; about 10 lines at most. The map is a starting point, not a fence — the executor may
+read more when it is not enough.
+
+```markdown
+## Context
+- Templates: `backend_template.md` §4 "Прикладные сервисы", §10 "Тесты"
+- Memories: `db-access-rules`, `domain-rules`
+- Specs: `ai-flow/docs/specs/03-orders.md` §2 "Discounts"
+- Code: `src/Orders/Application/OrderService.cs` (service to extend) ·
+  `src/Orders/Api/OrderEndpoints.cs` (endpoint shape to copy) ·
+  `src/Orders/DependencyInjection.cs` (register the new validator)
+```
+
 ### 7. What Every Task Must Contain
 
 ```markdown
@@ -228,6 +262,12 @@ A table, one row per case, with concrete values — no "valid input", no "some e
 
 ## Motivation
 [What problem this solves. Why it matters for the user or the system.]
+
+## Context
+- Templates: [template §N "heading" — only the sections this task needs]
+- Memories: [read_memory names that apply]
+- Specs: [spec file § section]
+- Code: [3–7 files/symbols to follow or extend, each with why]
 
 ---
 
@@ -292,6 +332,8 @@ but enough for the agent to write the implementation without ambiguity.]
 - File paths for creation or modification
 - Schema details (table names, column types, index names)
 - Route paths and HTTP/status codes
+- A `## Context` map per §6a: the template sections, memories, spec section and 3–7 code anchors
+  this task needs — so the executor does not load whole templates or sweep the codebase
 - A `## Test Cases` table per §6: unit-level, mocked dependencies, concrete inputs and
   expected results, hot paths + corner cases
 - A final Acceptance Criterion that the whole solution builds/compiles and its tests pass — every
@@ -314,14 +356,15 @@ ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/
 ├── README.md                          # DesignReview of the whole improvement (see §9.1)
 ├── <YYYYMMddHHmm_TASK_SUMMARY>.md      # one task per file
 ├── <YYYYMMddHHmm_ANOTHER_SUMMARY>.md
+├── NOTES.md                           # feature notes — executing agents append to it (do not pre-create)
 └── done/                              # run_tasks.py MOVES completed tasks here (do not pre-create)
 ```
 
 When every task of a feature is done and the feature verification pass is green, run_tasks.py MOVES
 the whole feature folder into the global archive `ai-flow/docs/tasks/done/<YYYYMMddHHmm_FEATURE_NAME>/`.
-Never author a separate "run the tests" task at the end of a feature — the orchestrator runs that pass
-itself. Do not pre-create `tasks/done/`, and
-never author a new feature named `done` — that name is reserved for the archive.
+Never author a separate "run the tests" or "update the docs" task at the end of a feature — the
+orchestrator's verification pass does both. Do not pre-create `tasks/done/` or `NOTES.md`, and
+never author a new feature named `done` or a task named `NOTES` / `README` — those names are reserved.
 
 - `YYYYMMddHHmm` — a timestamp; obtain the current one with `date +%Y%m%d%H%M`.
 - `FEATURE_NAME` — kebab-case name of the improvement (e.g. `user-login`, `fix-webhook-retry`).
@@ -420,7 +463,7 @@ documents and plans, not features, and it MUST:
    authored from the just-corrected PRD and specs, never from their pre-milestone version.
 
 Its `## Test Cases` section states plainly that the task changes no production code, and carries the
-checks that still apply: the build and the existing test suite stay green (under the feature gate the
+checks that still apply: the build and the existing test suite stay green (under the feature unit of work the
 suite runs in the verification pass right after this task, before the next milestone's first feature
 starts), and the documents match what the code registers (error map, policies, limits) with no
 divergence left.
@@ -446,6 +489,7 @@ which milestone the features being cut now belong to.
 `ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE_NAME>/<YYYYMMddHHmm_TASK_SUMMARY>.md`, in the format from §7
 (drop the `#NN` from the title — use a plain `# <Task title>`).
 Each task file MUST carry a filled-in `## Test Cases` section per §6 — unit-level, dependencies
-mocked, hot paths and corner cases covered. A task file without it is not a valid output.
+mocked, hot paths and corner cases covered — and a `## Context` map per §6a with real sections, memory
+names and code anchors. A task file without either is not a valid output.
 The last feature folder of a milestone MUST end with the checkpoint task from §11.3 — a milestone
 without its checkpoint is not a valid output either.

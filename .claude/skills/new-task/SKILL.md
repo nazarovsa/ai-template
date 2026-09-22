@@ -13,7 +13,7 @@ Route task authoring to the `task-author` subagent.
 2. Delegate to the **task-author** subagent (via the Agent/Task tool), passing the user's requirement
    or the referenced spec (`ai-flow/docs/specs/...`).
 3. Report the created feature folder `ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE>/` — its DesignReview
-   `README.md` and the task files inside — plus the milestone it belongs to and the state of
-   `ai-flow/docs/tasks/MILESTONES.md` (PROMT_TASKS §11).
+   `README.md` and the task files inside (each with its `## Context` map and `## Test Cases`) — plus
+   the milestone it belongs to and the state of `ai-flow/docs/tasks/MILESTONES.md` (PROMT_TASKS §11).
 
 This skill is thin — all logic lives in the `task-author` subagent. Do not author tasks inline here.

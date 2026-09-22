@@ -17,16 +17,24 @@ When ALL tasks of a feature are done, the whole feature folder is MOVED into the
 global done/ catalog (archive of fully completed features):
     ai-flow/docs/tasks/done/<YYYYMMddHHmm_FEATURE>/
 Pending tasks run in filename order (timestamp prefix => chronological); explicit
-`Depends on:` lines gate ordering. `README.md` inside a feature folder is not a task.
+`Depends on:` lines gate ordering. `README.md` (the DesignReview) and `NOTES.md` (the
+feature notes) inside a feature folder are not tasks.
 
-Test gate (`test_gate` in agents.yml) — the green-tests gate applies to the unit of work requested:
+Unit of work (`unit_of_work` in agents.yml; legacy name `test_gate`) — the green-tests gate and the
+documentation both apply to the unit of work that was requested:
     feature (default) — a feature run (no --task) tells each task agent to write its tests (TDD) and
-        make the solution compile, but NOT to run the tests. Once a feature has no pending tasks, a
-        verification pass (PROMT_VERIFY.md) builds the solution, runs the whole test suite and fixes
-        failures; only a green pass archives the feature. A feature whose tasks are all in done/ but
-        which is not archived yet is unverified, and is verified first on the next run. A --task run
-        is a single-task unit: that task runs its tests itself.
-    task — every task builds and runs the tests; features are archived right after their last task.
+        make the solution compile, but NOT to run the tests, and to record what it built only in the
+        feature notes (<feature>/NOTES.md, fed to every later task). Once a feature has no pending
+        tasks, a verification pass (PROMT_VERIFY.md) builds the solution, runs the whole test suite,
+        fixes failures, then records the feature's docs (changelog, spec, as-built, memories) from
+        the notes; only a green pass archives the feature. A feature whose tasks are all in done/
+        but which is not archived yet is unverified, and is verified first on the next run. A --task
+        run is a single-task unit: that task runs its tests and updates the docs itself.
+    task — every task builds, runs the tests and updates the docs; features are archived right after
+        their last task.
+
+Prompt size: an agent with `loads_claude_md: true` (a CLI that auto-loads CLAUDE.md) does not get
+CLAUDE.md embedded again, and only the last `context.changelog_entries` changelog entries are sent.
 
 Agents are configured in `ai-flow/agents.yml`; the template ships `claude` only (another
 agentic CLI adds its own entry — see ai-flow/docs/prompts/PROMT_TOOL.md). The prompt is
@@ -111,6 +119,12 @@ class Task:
 # ---------------------------------------------------------------------------
 
 DONE_DIR = "done"  # both the per-feature done/ subfolder and the global done/ catalog
+NOTES_FILE = "NOTES.md"  # feature notes: each task appends what it built, later tasks read it
+NON_TASK_STEMS = {"readme", "notes"}  # feature-folder files that are not tasks
+
+
+def _is_task_file(path: Path) -> bool:
+    return path.stem.lower() not in NON_TASK_STEMS
 
 
 def _feature_dirs(tasks_dir: Path) -> list[Path]:
@@ -159,7 +173,7 @@ def pending_tasks(tasks_dir: Path) -> list[Task]:
     tasks = []
     for feat in _feature_dirs(tasks_dir):
         for path in sorted(feat.glob("*.md")):
-            if path.stem.lower() == "readme":
+            if not _is_task_file(path):
                 continue
             content = path.read_text(encoding="utf-8")
             tasks.append(Task(
@@ -179,6 +193,11 @@ def feature_readme(tasks_dir: Path, feature: str) -> str:
     return ""
 
 
+def feature_notes(tasks_dir: Path, feature: str) -> str:
+    p = tasks_dir / feature / NOTES_FILE
+    return p.read_text(encoding="utf-8").strip() if p.exists() else ""
+
+
 def mark_done(task: Task) -> None:
     assert task.file is not None
     dest = task.file.parent / DONE_DIR
@@ -190,8 +209,8 @@ def mark_done(task: Task) -> None:
 
 
 def _has_pending_tasks(feature_dir: Path) -> bool:
-    """A feature is still active while any task file remains at its top level (README excluded)."""
-    return any(p.stem.lower() != "readme" for p in feature_dir.glob("*.md"))
+    """A feature is still active while any task file remains at its top level (README/NOTES excluded)."""
+    return any(_is_task_file(p) for p in feature_dir.glob("*.md"))
 
 
 def archive_feature_if_complete(tasks_dir: Path, feature: str) -> None:
@@ -223,9 +242,26 @@ def _load_text(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
-def _load_claude_md() -> str:
+def _load_claude_md(ctx: dict) -> str:
+    if not ctx.get("embed_claude_md", True):
+        # The agent CLI auto-loads CLAUDE.md (agents.yml `loads_claude_md`) — do not pay for it twice.
+        return ("## Project Rules (CLAUDE.md)\n\n"
+                "Your CLI has already loaded `CLAUDE.md` — follow it; it is not repeated here.")
     content = _load_text(REPO_ROOT / "CLAUDE.md")
     return f"## Project Rules (CLAUDE.md)\n\n{content}" if content else ""
+
+
+def _recent_changelog(changelog: str, entries: int) -> str:
+    """The last `entries` `## ` entries of the changelog — the whole journal is not worth resending."""
+    if entries <= 0:
+        return ""
+    blocks: list[list[str]] = []
+    for line in changelog.splitlines():
+        if line.startswith("## "):
+            blocks.append([])
+        if blocks:
+            blocks[-1].append(line)
+    return "\n".join("\n".join(b).strip() for b in blocks[-entries:])
 
 
 def _load_specs_summary(specs_dir: Path) -> str:
@@ -336,7 +372,8 @@ def _ensure_changelog_file(changelog_file: Path) -> None:
     if not changelog_file.exists():
         changelog_file.write_text(
             "# Changelog\n\n"
-            "Chronological journal of completed tasks — each task run APPENDS an entry below.\n"
+            "Chronological journal of completed work — each feature verification pass (or a "
+            "single-task run) APPENDS an entry below.\n"
             "Reusable patterns are NOT recorded here: they live in Serena memory "
             "(`.serena/memories/*`) and are indexed in the CLAUDE.md \"Project knowledge\" table.\n\n"
             "---\n",
@@ -349,27 +386,54 @@ def _design_block(tasks_dir: Path, feature: str) -> str:
     return f"## Feature DesignReview ({feature}/README.md)\n\n{design}" if design else ""
 
 
-def build_prompt(task: Task, ctx: dict, marker: str, *, defer_tests: bool) -> str:
+def _notes_rel(ctx: dict, feature: str) -> str:
+    return f"{ctx['tasks_dir']}/{feature}/{NOTES_FILE}"
+
+
+def _notes_block(ctx: dict, feature: str, *, empty: str) -> str:
+    notes = feature_notes(resolve(ctx["tasks_dir"]), feature)
+    return f"## Feature notes (`{_notes_rel(ctx, feature)}`)\n\n{notes or empty}"
+
+
+def build_prompt(task: Task, ctx: dict, marker: str, *, deferred: bool) -> str:
     agent_prompt = _load_text(resolve(ctx["agent_prompt"]))
-    claude_md = _load_claude_md()
+    claude_md = _load_claude_md(ctx)
     specs = _load_specs_summary(resolve(ctx["specs_dir"]))
     memories = _load_memories(resolve(ctx["memories_dir"]), inline=ctx.get("inline_memories", False))
-    changelog = _load_text(resolve(ctx["changelog_file"]))
+    entries = int(ctx.get("changelog_entries", 3))
+    changelog = _recent_changelog(_load_text(resolve(ctx["changelog_file"])), entries)
+    changelog_block = (
+        f"## Changelog (last {entries} entries — the full journal is `{ctx['changelog_file']}`)\n\n"
+        f"{changelog or '(No previous entries)'}"
+        if entries > 0 else ""
+    )
     design_block = _design_block(resolve(ctx["tasks_dir"]), task.feature)
+    notes_block = _notes_block(ctx, task.feature,
+                               empty="(No entries yet — this is the first task of the feature.)")
+    notes_rel = _notes_rel(ctx, task.feature)
     specs_dir = ctx["specs_dir"]
 
-    if defer_tests:
-        test_gate = ("feature — write this task's tests but do NOT run them; the feature verification "
-                     "pass runs the whole suite after the feature's last task")
+    if deferred:
+        unit = ("feature — write this task's tests but do NOT run them, and record what you built only "
+                "in the feature notes; the feature verification pass runs the whole suite and writes "
+                "the docs after the feature's last task")
         gate_reminder = """- BLOCKING: build the whole solution, test projects included (read_memory("build-and-verify")) — it
   MUST compile. Write every Test Cases row as a real test (TDD) but do NOT run the test suite: the
   feature verification pass runs it once the feature's last task is done. If it does not compile, the
   task is NOT done — do NOT print the completion marker; report the failing command and its output."""
+        docs_reminder = f"""- APPEND this task's entry to the feature notes `{notes_rel}`. Do NOT edit the changelog, the
+  feature spec, IMPLEMENTED.md, memories or the CLAUDE.md table — the verification pass records them
+  once for the whole feature, from the notes."""
     else:
-        test_gate = "task — build the solution and run its tests before finishing this task"
+        unit = "task — build the solution, run its tests and update the docs before finishing this task"
         gate_reminder = """- BLOCKING: build the whole project and run its tests (read_memory("build-and-verify")). The solution
   MUST compile/build and pass tests. If it does not build, the task is NOT done — do NOT print the
   completion marker; report the failing command and its output instead."""
+        docs_reminder = f"""- APPEND this task's entry to the feature notes `{notes_rel}`.
+- Reusable patterns → document them as Serena memory (write_memory) + the CLAUDE.md table, NOT the changelog.
+- APPEND a factual changelog entry (what changed + files) to `{ctx["changelog_file"]}`.
+- Update the feature spec (living docs): ensure `{specs_dir}/{task.feature}/README.md` (target) exists
+  and record what you built in `{specs_dir}/{task.feature}/IMPLEMENTED.md` (as-built)."""
 
     return f"""{agent_prompt}
 
@@ -381,7 +445,7 @@ def build_prompt(task: Task, ctx: dict, marker: str, *, defer_tests: bool) -> st
 
 Working directory: {REPO_ROOT}
 Feature: {task.feature}
-Test gate: {test_gate}
+Unit of work: {unit}
 
 {specs}
 
@@ -389,9 +453,9 @@ Test gate: {test_gate}
 
 {design_block}
 
-## Changelog (recent history)
+{notes_block}
 
-{changelog or "(No previous entries)"}
+{changelog_block}
 
 ---
 
@@ -402,13 +466,12 @@ Test gate: {test_gate}
 ---
 
 Remember:
+- Start from the task's `## Context` map and the feature notes — read the template sections, memories
+  and code anchors they name; widen the search only when they are not enough.
 - Read existing code before writing.
 - Follow project rules (CLAUDE.md), the Feature DesignReview, and Serena memories.
 {gate_reminder}
-- Reusable patterns → document them as Serena memory (write_memory) + the CLAUDE.md table, NOT the changelog.
-- APPEND a factual changelog entry (what changed + files) to `{ctx["changelog_file"]}`.
-- Update the feature spec (living docs): ensure `{specs_dir}/{task.feature}/README.md` (target) exists
-  and record what you built in `{specs_dir}/{task.feature}/IMPLEMENTED.md` (as-built).
+{docs_reminder}
 - DO NOT git commit — the orchestrator handles commits.
 - When done, print exactly: {marker}
 """
@@ -416,11 +479,15 @@ Remember:
 
 def build_verify_prompt(feature: str, ctx: dict, marker: str) -> str:
     verify_prompt = _load_text(resolve(ctx["verify_prompt"]))
-    claude_md = _load_claude_md()
+    claude_md = _load_claude_md(ctx)
     specs = _load_specs_summary(resolve(ctx["specs_dir"]))
     memories = _load_memories(resolve(ctx["memories_dir"]), inline=ctx.get("inline_memories", False))
     tasks_dir = resolve(ctx["tasks_dir"])
     design_block = _design_block(tasks_dir, feature)
+    notes_block = _notes_block(ctx, feature,
+                               empty="(No feature notes — reconstruct what was built from the task "
+                                     "files and `git log`.)")
+    specs_dir = ctx["specs_dir"]
     task_list = "\n".join(
         f"- `{p.relative_to(REPO_ROOT).as_posix()}` — {_first_heading(_load_text(p)) or p.stem}"
         for p in feature_done_tasks(tasks_dir, feature)
@@ -436,7 +503,7 @@ def build_verify_prompt(feature: str, ctx: dict, marker: str) -> str:
 
 Working directory: {REPO_ROOT}
 Feature: {feature}
-Test gate: feature — this is the verification pass that closes it
+Unit of work: feature — this is the verification pass that closes it
 
 {specs}
 
@@ -444,11 +511,11 @@ Test gate: feature — this is the verification pass that closes it
 
 {design_block}
 
-## Tasks of this feature (implemented, tests written but not yet run)
+## Tasks of this feature (implemented; tests written but not yet run)
 
 {task_list}
 
-Their changelog entries in `{ctx["changelog_file"]}` say what each task changed.
+{notes_block}
 
 ---
 
@@ -456,19 +523,24 @@ Remember:
 - BLOCKING: build the whole solution and run the WHOLE test suite (read_memory("build-and-verify")).
   Fix every failure and re-run until green. Never weaken, skip, or delete a test to get green.
 - Every Test Cases row of every task above must exist as a real test — write any that is missing.
-- APPEND a changelog entry for this pass to `{ctx["changelog_file"]}`.
+- Then record the feature's docs ONCE, from the notes and the final code: APPEND one changelog entry to
+  `{ctx["changelog_file"]}`; ensure `{specs_dir}/{feature}/README.md` (target) exists; write
+  `{specs_dir}/{feature}/IMPLEMENTED.md` (as-built); add the feature to the index in
+  `{specs_dir}/README.md`; record the patterns / domain rules the notes list as Serena memory + the
+  CLAUDE.md table.
 - DO NOT git commit and do NOT move task files — the orchestrator archives the feature and commits.
-- Print exactly {marker} ONLY when the build and the whole test suite are green.
+- Print exactly {marker} ONLY when the build and the whole test suite are green and the docs are recorded.
 """
 
 
 def run_agent(task: Task, agent: dict, model: str, marker: str, timeout: int,
-              *, dry_run: bool, ctx: dict, defer_tests: bool) -> bool:
-    tests = "deferred to the feature verification pass" if defer_tests else "run by this task"
+              *, dry_run: bool, ctx: dict, deferred: bool) -> bool:
+    unit = ("feature — tests and docs deferred to the verification pass" if deferred
+            else "task — runs its tests and updates the docs")
     return _invoke(
         f"  >>  [{task.feature}] {task.id}: {task.title}",
-        [f"deps : {task.deps or 'none'}", f"tests: {tests}"],
-        lambda: build_prompt(task, ctx, marker, defer_tests=defer_tests),
+        [f"deps : {task.deps or 'none'}", f"unit : {unit}"],
+        lambda: build_prompt(task, ctx, marker, deferred=deferred),
         agent, model, marker, timeout, dry_run=dry_run, ctx=ctx, strict=False,
     )
 
@@ -589,14 +661,14 @@ def main() -> None:
     verify_timeout = int(cfg.get("verify_timeout", 2 * timeout))
     git_cfg = cfg.get("git") or {}
 
-    test_gate = str(cfg.get("test_gate", "feature")).lower()
-    if test_gate not in ("feature", "task"):
-        print(f"ERROR: test_gate must be 'feature' or 'task', got '{test_gate}' in {args.config}")
+    unit_of_work = str(cfg.get("unit_of_work", cfg.get("test_gate", "feature"))).lower()
+    if unit_of_work not in ("feature", "task"):
+        print(f"ERROR: unit_of_work must be 'feature' or 'task', got '{unit_of_work}' in {args.config}")
         sys.exit(1)
-    feature_gate = test_gate == "feature"
-    # The green-tests gate follows the requested unit of work: a --task run is one task and runs its
-    # own tests; any other run executes whole features, whose tests run once in the verification pass.
-    defer_tests = feature_gate and not args.task
+    feature_mode = unit_of_work == "feature"
+    # Tests and docs follow the requested unit of work: a --task run is one task and does both itself;
+    # any other run executes whole features, which get both once, in the verification pass.
+    deferred = feature_mode and not args.task
 
     agents = cfg.get("agents") or {}
     agent_name = args.agent or cfg.get("default_agent")
@@ -606,6 +678,7 @@ def main() -> None:
         sys.exit(1)
     agent = agents[agent_name]
     model = args.model or agent.get("model", "")
+    ctx["embed_claude_md"] = not agent.get("loads_claude_md", False)
 
     tasks_dir = resolve(ctx["tasks_dir"])
     if not pending_tasks(tasks_dir) and not completed_stems(tasks_dir):
@@ -613,7 +686,7 @@ def main() -> None:
               f"YYYYMMddHHmm_FEATURE with task files (see ai-flow/docs/tasks/README.md).")
         sys.exit(1)
 
-    print(f"Agent: {agent_name}  |  model: {model or '(default)'}  |  test gate: {test_gate}  |  "
+    print(f"Agent: {agent_name}  |  model: {model or '(default)'}  |  unit of work: {unit_of_work}  |  "
           f"root: {REPO_ROOT}")
 
     def verify_and_archive(feature: str) -> bool:
@@ -642,8 +715,8 @@ def main() -> None:
                 print(f"Task '{args.task}' not found among pending tasks.")
                 return
 
-        # Feature gate: a feature whose tasks are all done is verified before any further work.
-        unverified = [] if (args.task or not feature_gate) else [
+        # Feature mode: a feature whose tasks are all done is verified before any further work.
+        unverified = [] if (args.task or not feature_mode) else [
             f for f in unverified_features(tasks_dir)
             if not args.feature or args.feature.lower() in f.lower()
         ]
@@ -678,18 +751,18 @@ def main() -> None:
 
         task = ready[0]
         success = run_agent(task, agent, model, marker, timeout,
-                            dry_run=args.dry_run, ctx=ctx, defer_tests=defer_tests)
+                            dry_run=args.dry_run, ctx=ctx, deferred=deferred)
 
         if success:
             if not args.dry_run:
                 mark_done(task)
-                if not feature_gate:
+                if not feature_mode:
                     archive_feature_if_complete(tasks_dir, task.feature)
                 if not commit_task(task, git_cfg):
                     sys.exit(1)
-                # A single task that closes its feature still owes the feature gate before archiving
+                # A single task that closes its feature still owes the feature pass before archiving
                 # (in a feature run the loop picks the feature up as unverified on its next pass).
-                if (args.task and feature_gate and task.feature in unverified_features(tasks_dir)
+                if (args.task and feature_mode and task.feature in unverified_features(tasks_dir)
                         and not verify_and_archive(task.feature)):
                     sys.exit(1)
             failures = 0

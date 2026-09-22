@@ -134,7 +134,10 @@ Two traps that have already cost time here:
 7. **Executor entry (only if the tool also drives tasks).** Run the CLI's `--help` and read its docs;
    then add an entry to `agents.yml` under `agents:` with the verified non-interactive invocation.
    Set `default_agent` to it only if the user asked for that. Use `{prompt_file}` if the CLI cannot
-   read a prompt from stdin.
+   read a prompt from stdin. Set `loads_claude_md: true` only if you verified that the CLI itself loads
+   `CLAUDE.md` in headless mode (ask it, without tools, to quote a line of `CLAUDE.md`); otherwise omit
+   it and the orchestrator embeds `CLAUDE.md` into every prompt. A CLI that reads only `AGENTS.md` does
+   not count — that file just points to `CLAUDE.md`.
 8. **Installer.** Add every file you generated to `MANIFEST` in `ai-flow/init.py`, so a fresh
    deployment carries the adaptation. Do not re-introduce a `--tool` flag: the installer configures
    Claude Code, and this prompt is what adapts everything else.

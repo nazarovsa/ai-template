@@ -18,12 +18,13 @@ launch the runner, and report what happened.
   pending task files in filename (chronological) order, honors `Depends on:` lines, and MOVES each
   completed task into that feature's `done/` subfolder. `README.md` in a feature folder is the
   DesignReview, not a task. Config is `ai-flow/agents.yml`.
-- **Test gate** (`test_gate: feature`, the default): in a feature run the task agents write tests but
-  do not run them; after the feature's last task the runner itself launches the **feature verification
-  pass** (build + whole test suite + fixes, `PROMT_VERIFY.md`) and archives the feature only if it is
-  green. A `--task` run runs that task's tests; if it closes the feature, the verification pass
-  follows. A feature with every task in `done/` but still outside `tasks/done/` is unverified — a
-  feature run verifies it first.
+- **Unit of work** (`unit_of_work: feature`, the default): in a feature run the task agents write tests
+  but do not run them, and record what they built only in the feature's `NOTES.md`; after the
+  feature's last task the runner itself launches the **feature verification pass** (build + whole test
+  suite + fixes, then the feature's docs from the notes — `PROMT_VERIFY.md`) and archives the feature
+  only if it is green. A `--task` run runs that task's tests and docs; if it closes the feature, the
+  verification pass follows. A feature with every task in `done/` but still outside `tasks/done/` is
+  unverified — a feature run verifies it first. `NOTES.md` in a feature folder is not a task.
 - Relevant flags: `--feature <name|substring>` (only that feature), `--task <stem|substring>` (only that
   one task, then stop), `--agent <name>` / `--model <m>` (override the executor), `--dry-run` (print the
   plan without executing — with `--feature` or `--task` it prints only the FIRST ready task).

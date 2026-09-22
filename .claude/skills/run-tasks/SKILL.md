@@ -16,8 +16,8 @@ Route execution of the task runner to the `task-runner` subagent.
 2. Delegate to the **task-runner** subagent (via the Agent/Task tool), passing the feature and the mode
    (whole feature vs. next task) plus any `--agent` / `--model` override the user requested.
 3. Report which tasks ran, what moved to `done/`, the feature verification pass outcome (the whole
-   test suite runs once per feature, after its last task), whether the feature was archived into
-   `tasks/done/`, commits made, and anything that failed or is blocked.
+   test suite and the feature's docs happen once per feature, after its last task), whether the feature
+   was archived into `tasks/done/`, commits made, and anything that failed or is blocked.
 
 This skill is thin — all logic lives in the `task-runner` subagent. Do not invoke `run_tasks.py` inline
 here.

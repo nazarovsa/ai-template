@@ -57,16 +57,20 @@ implement the closest equivalent and record the gap in the final report.
    the feature's `done/` folder and commits it. The pipeline only configures a git identity, pushes,
    and opens the merge/pull request.
 7. **An empty task queue is a success, not a failure.** `run_tasks.py` exits 1 when it finds no tasks
-   at all, which would otherwise paint a fresh repo's first run red. Count pending tasks first and
-   skip the run cleanly. Reuse the orchestrator's own parser rather than reimplementing the layout:
+   at all, which would otherwise paint a fresh repo's first run red. Count pending work first and
+   skip the run cleanly. Pending work is the pending tasks **plus**, under `unit_of_work: feature`, the
+   unverified features (all tasks done, verification pass not green yet) — skip those and a failed
+   pass is never retried. Reuse the orchestrator's own parser rather than reimplementing the layout:
 
    ```python
    import sys
    sys.path.insert(0, "ai-flow")
    import run_tasks as rt
    cfg = rt.load_config(rt.DEFAULT_CONFIG)
-   tasks_dir = (cfg.get("context") or {}).get("tasks_dir", "ai-flow/docs/tasks")
-   print(len(rt.pending_tasks(rt.resolve(tasks_dir))))
+   tasks_dir = rt.resolve((cfg.get("context") or {}).get("tasks_dir", "ai-flow/docs/tasks"))
+   unit = str(cfg.get("unit_of_work", cfg.get("test_gate", "feature"))).lower()
+   unverified = rt.unverified_features(tasks_dir) if unit == "feature" else []
+   print(len(rt.pending_tasks(tasks_dir)) + len(unverified))
    ```
 8. **Preserve partial results.** If the orchestrator fails partway, still open the merge/pull request
    for the tasks that completed, warn about it in the description, and mark the run failed.

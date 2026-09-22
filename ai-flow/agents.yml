@@ -4,13 +4,15 @@ default_agent: claude          # which agent to use by default
 task_timeout: 1200             # per-task timeout, seconds
 completion_marker: "<promise>COMPLETE</promise>"
 
-# Green-tests gate — applies to the unit of work that was requested:
-#   feature → in a feature run (no --task) every task writes its tests (TDD) and must compile, but the
-#             tests run ONCE per feature: after its last task a verification pass (PROMT_VERIFY.md)
-#             runs the whole suite and fixes failures; only a green pass archives the feature.
-#             A --task run is a single-task unit and runs its own tests.
-#   task    → every task builds and runs the tests (no verification pass).
-test_gate: feature
+# Unit of work — the green-tests gate and the docs apply to the unit of work that was requested:
+#   feature → in a feature run (no --task) every task writes its tests (TDD) and must compile, and
+#             records what it built only in <feature>/NOTES.md. Tests and docs happen ONCE per
+#             feature: after its last task a verification pass (PROMT_VERIFY.md) runs the whole
+#             suite, fixes failures, then writes the changelog / spec / as-built / memories from the
+#             notes; only a green pass archives the feature. A --task run is a single-task unit and
+#             runs its own tests and docs.
+#   task    → every task builds, runs the tests and updates the docs (no verification pass).
+unit_of_work: feature          # legacy name: test_gate
 verify_timeout: 2400           # verification pass timeout, seconds (default: 2 × task_timeout)
 
 git:
@@ -27,12 +29,14 @@ context:                       # all paths are relative to REPO_ROOT (the parent
   agent_prompt: ai-flow/docs/prompts/PROMT_AGENT.md
   verify_prompt: ai-flow/docs/prompts/PROMT_VERIFY.md    # the feature verification pass
   inline_memories: false                            # false → inject memory pointers, not full text
+  changelog_entries: 3                              # last N changelog entries sent to a task (0 → none)
 
 agents:
   # Claude Code — https://docs.claude.com/claude-code — the only agent this template ships with.
   claude:
     command: "claude --model {model} --print --dangerously-skip-permissions"
     model: sonnet
+    loads_claude_md: true      # the CLI auto-loads CLAUDE.md → the orchestrator does not embed it again
 
   # Using a different agentic CLI? Do not guess its flags here — run
   # ai-flow/docs/prompts/PROMT_TOOL.md under that tool: it verifies the CLI's real headless
@@ -43,5 +47,7 @@ agents:
   #                                      # use the {prompt_file} placeholder instead when the CLI
   #                                      # cannot read stdin (run_tasks.py substitutes a temp file)
   #   model: <default model>
+  #   loads_claude_md: true              # ONLY if the CLI itself loads CLAUDE.md (verified) — then the
+  #                                      # orchestrator stops embedding it; omit it otherwise
   #   env:                               # optional; ${VARS} are expanded from the environment
   #     SOME_API_KEY: "${SOME_API_KEY}"

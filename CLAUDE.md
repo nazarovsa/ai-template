@@ -21,7 +21,9 @@ Load Serena memories and docs **on demand** — do not preload everything into c
   automatically. No separate `functionality/` folder — specs is the single home.
 - **Task artifacts ALWAYS go into `ai-flow/docs/tasks/`**, grouped by feature/fix:
   `ai-flow/docs/tasks/<YYYYMMddHHmm_FEATURE>/` with a `README.md` (DesignReview), task files
-  `<YYYYMMddHHmm_TASK>.md`, and a `done/` subfolder (see `ai-flow/docs/tasks/README.md`).
+  `<YYYYMMddHHmm_TASK>.md`, a `NOTES.md` (feature notes, appended by executing agents) and a `done/`
+  subfolder (see `ai-flow/docs/tasks/README.md`). Every task carries a `## Context` map — the template
+  sections, memories and code anchors its executor reads first (`PROMT_TASKS.md` §6a).
 - **A PRD is cut into key implementation milestones before it is cut into tasks.** The milestones
   live in `ai-flow/docs/tasks/MILESTONES.md` (goal, covered requirements/specs, member features,
   exit criteria, status). The last task of a milestone's last feature is always a checkpoint task:
@@ -30,9 +32,10 @@ Load Serena memories and docs **on demand** — do not preload everything into c
   Rules: `ai-flow/docs/prompts/PROMT_TASKS.md` §11.
 - Automated execution: `python ai-flow/run_tasks.py` (config `ai-flow/agents.yml`). On success a task
   file is MOVED into its feature's `done/` subfolder and committed; once ALL tasks of a feature are
-  done, the feature verification pass (`PROMT_VERIFY`) runs the whole test suite and fixes failures,
-  and only a green pass MOVES the whole feature folder into the global archive
-  `ai-flow/docs/tasks/done/<feature>/` (`test_gate: feature`, the default — see the rule below).
+  done, the feature verification pass (`PROMT_VERIFY`) runs the whole test suite, fixes failures and
+  records the feature's docs from its notes, and only a green pass MOVES the whole feature folder into
+  the global archive `ai-flow/docs/tasks/done/<feature>/` (`unit_of_work: feature`, the default — see
+  the rules below).
 - In CI: `.github/workflows/ai-flow-tasks.yml` ("ai-flow · run tasks") runs the same orchestrator from
   the repo root on manual dispatch and opens a PR. It authenticates with the `CLAUDE_CODE_OAUTH_TOKEN`
   secret. Agent commands in `agents.yml` must NOT use `--bare`: bare mode skips CLAUDE.md / `.claude/`
@@ -103,9 +106,9 @@ In CI, `.github/workflows/ai-flow-tasks.yml` provisions this itself — it insta
 
 ## Always-apply rules
 
-- **Work is done only if the solution builds and its tests pass — and the green-tests gate applies to
-  the unit of work that was requested.** Build with the project's own tooling
-  (`read_memory("build-and-verify")`):
+- **Work is done only if the solution builds and its tests pass — and the green-tests gate (like the
+  docs, see below) applies to the unit of work that was requested.** Build with the project's own
+  tooling (`read_memory("build-and-verify")`):
   - **A whole feature was requested** (`run_tasks.py` without `--task`, or "implement feature X" in a
     session): each task writes its tests test-first and must leave the solution **compiling**
     (build after every task, test projects included), but the tests are **not run per task**. After
@@ -120,7 +123,8 @@ In CI, `.github/workflows/ai-flow-tasks.yml` provisions this itself — it insta
   feature (or a single task) done while its tests are red; never weaken, skip, or delete tests to get
   green.
 - **Code follows `ai-flow/docs/core_templates/`** — backend and frontend templates are binding.
-  Read the relevant one before writing code; walk its feature checklist before declaring done.
+  Read the relevant sections before writing code — a task's `## Context` map names them; do not load
+  a whole template by default — and walk its feature checklist before declaring done.
 - Task setup → artifacts only in `ai-flow/docs/tasks/` (format: `ai-flow/docs/tasks/README.md`).
 - **New/changed reusable pattern in code — or a key domain business rule** (formula, coefficient,
   threshold, mechanic/economy invariant) → create/update the matching `.serena/memories/<name>.md`
@@ -128,6 +132,11 @@ In CI, `.github/workflows/ai-flow-tasks.yml` provisions this itself — it insta
   rule and its enforcing code move together. Never silently diverge from a memory — fix the memory or
   escalate the conflict.
 - **Behavior/architecture changed** → update the corresponding file under `ai-flow/docs/` (spec / README)
-  in the same change — docs must not lag behind code.
+  — docs must not lag behind a finished unit of work.
+- **Docs follow the unit of work, like the tests.** A single task records its changelog entry, spec /
+  as-built, memories and docs itself. In a whole feature each task writes only its entry in the feature
+  notes (`<feature>/NOTES.md`: built, files, API, decisions, patterns / domain rules, conflicts, docs
+  to update), and the verification pass records everything above once, from the notes. A pattern,
+  domain rule or conflict must reach the notes — it is never silently dropped between task and pass.
 - Git commits: a single-line message, **≤155 characters**. Do NOT mention Claude, AI, or any tool —
   no `Co-Authored-By`, no "Generated with …" footers, no tool names anywhere in the message.

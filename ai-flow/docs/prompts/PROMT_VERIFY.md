@@ -1,35 +1,39 @@
 # Feature Verification Instructions
 
-You are an autonomous coding agent running the **feature verification pass** — the green-tests gate
-of a whole feature.
+You are an autonomous coding agent running the **feature verification pass** — the pass that closes
+a whole feature: it makes the feature's tests green and then records its documentation, once.
 
 ## Why this pass exists
 
-The green-tests gate applies to the unit of work that was requested. A whole feature was requested,
-so its tasks were implemented one after another under the **feature test gate**: each task wrote its
-tests test-first (from its `## Test Cases` table) and left the solution compiling, but no task ran the
-tests. This pass is the single point where the feature's tests run and are made green. The feature is
-done only when this pass is green — until then the orchestrator keeps it active, not archived.
+The green-tests gate and the documentation apply to the unit of work that was requested. A whole
+feature was requested, so its tasks were implemented one after another under the **feature unit of
+work**: each task wrote its tests test-first (from its `## Test Cases` table), left the solution
+compiling, and recorded what it built only in the feature notes (`<feature>/NOTES.md`). No task ran
+the tests, and no task wrote the changelog, the spec, the as-built record or memories. This pass does
+both. The feature is done only when this pass is green — until then the orchestrator keeps it active,
+not archived.
 
 ## Input
 
 The orchestrator provides you with:
 1. **This prompt** — the verification instructions.
-2. **Project rules** — the contents of `CLAUDE.md`.
+2. **Project rules** — `CLAUDE.md`: embedded below, or already loaded by your CLI.
 3. **Project context** — spec pointers, Serena memory pointers, the Feature DesignReview.
 4. **The feature's task files** — every task of the feature, already implemented, in its `done/` folder.
+5. **The feature notes** — per task: what was built, files, API, decisions, patterns / domain rules,
+   conflicts, docs to update.
 
 ## Before Starting
 
-1. Read `CLAUDE.md` and `read_memory("build-and-verify")` for the exact build and test commands
+1. Follow `CLAUDE.md` and `read_memory("build-and-verify")` for the exact build and test commands
    (fall back to `read_memory("suggested-commands")`). Serena memories are plain `.md` files under
    `.serena/memories/` — read them directly if the Serena MCP is unavailable.
-2. Read the feature's task files: their **Changes**, **Test Cases** and **Acceptance Criteria** are the
-   contract the tests check.
-3. Call the `read_memory(...)` entries from the CLAUDE.md "Project knowledge" table that match the code
-   you will touch (for domain logic, also `read_memory("domain-rules")`).
+2. Read the feature notes, then the task files: their **Changes**, **Test Cases** and **Acceptance
+   Criteria** are the contract the tests check.
+3. Read only what a failure or a doc update needs — the `## Context` map of the task involved names
+   the template sections, memories and code anchors for it.
 
-## Steps
+## Part 1 — make the feature green
 
 1. **Build** the whole solution, test projects included.
 2. **Run the whole test suite** — not only the feature's tests: the feature may have broken older ones.
@@ -47,26 +51,41 @@ The orchestrator provides you with:
    another task, or the fix needs a decision — stop: do NOT print the completion marker, and report the
    failing test, the command, its output, and the contradiction in your summary.
 
-## Documentation
+## Part 2 — record the feature's documentation, once
 
-- APPEND an entry to `ai-flow/docs/CHANGELOG.md` (never replace):
-  ```
-  ## [datetime] - [feature] Feature verification
-  - Build + whole test suite: <result>
-  - Failures found and fixed (test → cause → fix), missing tests written
-  - Files changed
-  ---
-  ```
-- If a fix changed behavior, refresh `ai-flow/docs/specs/<feature>/IMPLEMENTED.md` (as-built).
-- A reusable pattern or domain rule learned while fixing → Serena memory, per `PROMT_AGENT.md`
-  ("Consolidate Knowledge"), never the changelog.
-- DO NOT git commit and do NOT move task files or the feature folder — on success the orchestrator
-  archives the feature into `ai-flow/docs/tasks/done/` and commits.
+Only after Part 1 is green, so the docs describe the final code. Use the formats from `PROMT_AGENT.md`
+("Documentation"); the notes are your source, the code is the truth where they disagree.
+
+1. **Changelog** — APPEND one entry to `ai-flow/docs/CHANGELOG.md` (never replace):
+   ```
+   ## [datetime] - [feature] <Feature name>
+   - Delivered: <per task, one line each, from the notes>
+   - Files: <key files>
+   - Verification: build + whole test suite green; failures found and fixed (test → cause → fix),
+     missing tests written
+   ---
+   ```
+2. **Feature spec** — ensure `ai-flow/docs/specs/<feature>/README.md` (target) exists, created from the
+   DesignReview if missing; write `ai-flow/docs/specs/<feature>/IMPLEMENTED.md` (as-built: behavior, key
+   files, decisions, deviations from the target — including what Part 1 fixed); add the feature to the
+   index in `ai-flow/docs/specs/README.md`.
+3. **Knowledge** — every pattern / domain rule the notes list becomes Serena memory
+   (`write_memory(...)`, shapes from `PROMT_SERENA.md`) with the CLAUDE.md "Project knowledge" table in
+   sync. Resolve every listed conflict: fix the memory / spec / code, or report it — never drop it.
+4. **Other docs** — apply the notes' "Docs to update": the matching `ai-flow/docs/` files and memories
+   (`architecture-overview`, `suggested-commands`, `build-and-verify`).
+
+If a task of this feature was run on its own (`--task`) it already wrote its docs — refresh them rather
+than duplicate them.
+
+DO NOT git commit and do NOT move task files, `NOTES.md` or the feature folder — on success the
+orchestrator archives the feature into `ai-flow/docs/tasks/done/` and commits.
 
 ## Completion
 
-Print the marker ONLY when the whole solution builds and the whole test suite passes. The marker is
-the promise that the feature is green; the orchestrator archives the feature on it.
+Print the marker ONLY when the whole solution builds, the whole test suite passes, and the feature's
+docs are recorded. The marker is the promise that the feature is green and documented; the orchestrator
+archives the feature on it.
 
-When (and only when) the build and the whole test suite are green, print exactly:
+When (and only when) that is true, print exactly:
 <promise>COMPLETE</promise>
